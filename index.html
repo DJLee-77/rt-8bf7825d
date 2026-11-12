@@ -131,9 +131,9 @@ input:focus { border-color: var(--line-strong); }
 }
 .icon-btn:active { transform: scale(0.96); background: var(--bg-hover); }
 .icon-btn.primary {
-  background: var(--red);
+  background: var(--green);
   border-color: transparent;
-  color: #fff;
+  color: #0a0a0c;
 }
 .icon-btn.primary:active { filter: brightness(0.92); }
 .icon-btn svg { width: 22px; height: 22px; display: block; }
@@ -242,7 +242,7 @@ input:focus { border-color: var(--line-strong); }
   flex: 1;
 }
 .ghost-btn:active, .solid-btn:active, .danger-btn:active { transform: scale(0.98); }
-.solid-btn { background: var(--red); color: #fff; min-width: 88px; }
+.solid-btn { background: var(--green); color: #0a0a0c; min-width: 88px; }
 .text-btn { color: var(--muted); font-weight: 600; font-size: 15px; padding: 0 10px; min-height: var(--tap); }
 .text-btn:active { color: var(--text); }
 .danger-btn { background: var(--red-soft); color: #ff6b63; }
@@ -388,9 +388,9 @@ input:focus { border-color: var(--line-strong); }
   pointer-events: none;
   transition: background 0.4s ease;
 }
-#view-run[data-phase="work"] { --phase: var(--red); --glow: rgba(255,59,48,0.28); }
-#view-run[data-phase="rest"] { --phase: var(--blue); --glow: rgba(100,210,255,0.22); }
-#view-run[data-phase="ready"] { --phase: var(--amber); --glow: rgba(255,214,10,0.20); }
+#view-run[data-phase="work"] { --phase: var(--green); --glow: rgba(48,209,88,0.28); }
+#view-run[data-phase="rest"] { --phase: var(--red); --glow: rgba(255,59,48,0.28); }
+#view-run[data-phase="ready"] { --phase: var(--amber); --glow: rgba(255,214,10,0.22); }
 #view-run[data-phase="done"] { --phase: var(--green); --glow: rgba(48,209,88,0.22); }
 
 .run-stage {
@@ -505,9 +505,7 @@ input:focus { border-color: var(--line-strong); }
   border-color: transparent;
   color: #0a0a0c;
 }
-#view-run[data-phase="work"] .ctrl.main .hit,
-#view-run[data-phase="ready"] .ctrl.main .hit { color: #fff; }
-#view-run[data-phase="ready"] .ctrl.main .hit { color: #0a0a0c; }
+#view-run[data-phase="rest"] .ctrl.main .hit { color: #fff; }
 .ctrl svg { width: 26px; height: 26px; display: block; }
 .ctrl.main svg { width: 32px; height: 32px; }
 
@@ -663,8 +661,8 @@ input:focus { border-color: var(--line-strong); }
   width: 100%;
   height: 54px;
   border-radius: 14px;
-  background: var(--red);
-  color: #fff;
+  background: var(--green);
+  color: #0a0a0c;
   font-size: 17px;
   font-weight: 800;
   letter-spacing: 0.12em;
@@ -741,25 +739,28 @@ input:focus { border-color: var(--line-strong); }
 
   function makePreset(partial) {
     partial = partial || {};
+    const hasWarmup = Object.prototype.hasOwnProperty.call(partial, "warmupMs") && partial.warmupMs != null;
     const base = {
       id: uid(),
       title: "New Timer",
       rounds: 8,
       workMs: 60000,
       restMs: 30000,
-      warmupMs: 0,
+      warmupMs: 10000,
       roundOverrides: [],
       sounds: Object.assign({}, DEFAULT_SOUNDS),
       updatedAt: Date.now()
     };
     const sounds = Object.assign({}, DEFAULT_SOUNDS, partial.sounds || {});
-    return Object.assign(base, partial, { sounds: sounds });
+    const out = Object.assign(base, partial, { sounds: sounds });
+    if (!hasWarmup) out.warmupMs = 10000;
+    return out;
   }
 
   function seedPresets() {
     return [
-      makePreset({ title: "Boxing", rounds: 12, workMs: 120000, restMs: 30000, warmupMs: 0 }),
-      makePreset({ title: "Minute On/Off", rounds: 10, workMs: 60000, restMs: 60000, warmupMs: 0 })
+      makePreset({ title: "Boxing", rounds: 12, workMs: 120000, restMs: 30000, warmupMs: 10000 }),
+      makePreset({ title: "Minute On/Off", rounds: 10, workMs: 60000, restMs: 60000, warmupMs: 10000 })
     ];
   }
 
@@ -1076,6 +1077,7 @@ input:focus { border-color: var(--line-strong); }
     }
     if (!step) return;
     if (step.phase === "work") {
+      // Also fires when Get Ready ends, which is when the first work round begins.
       playSound(state.run.sounds.workStart);
       vibrate(200);
     } else if (step.phase === "rest") {
@@ -1474,16 +1476,16 @@ input:focus { border-color: var(--line-strong); }
         '<div class="section"><div class="label">Rest</div>' +
           stepper("restMs", formatMs(d.restMs), -5000, 5000, "−5s", "+5s") +
         "</div>" +
+        '<div class="section"><div class="label">Get Ready</div>' +
+          stepper("warmupMs", formatMs(d.warmupMs || 0), -5000, 5000, "−5s", "+5s") +
+          '<p class="hint">A countdown before the first round. Set 0:00 to skip it.</p>' +
+        "</div>" +
         '<div class="section"><div class="label">Sounds</div>' + soundRows +
           '<p class="hint">Bells and buzzers play from this phone. Built-in iPhone sounds can’t be used in a web app.</p>' +
         "</div>" +
         '<div class="more-wrap">' +
           '<button type="button" class="more-toggle' + moreOpen + '" data-action="toggle-edit-more">More options ' + ic.chev + "</button>" +
           '<div class="more-body' + moreOpen + '">' +
-            '<div class="section"><div class="label">Get ready</div>' +
-              stepper("warmupMs", formatMs(d.warmupMs || 0), -5000, 5000, "−5s", "+5s") +
-              '<p class="hint">Optional countdown before the first round. 0:00 means it starts right away.</p>' +
-            "</div>" +
             '<div class="section"><div class="label">Per-round times</div>' +
               '<button type="button" class="ghost-btn wide" data-action="toggle-rounds">' +
                 (state.moreRounds || (d.roundOverrides && d.roundOverrides.length) ? "Hide rounds" : "Edit individual rounds") +
@@ -1536,7 +1538,9 @@ input:focus { border-color: var(--line-strong); }
         '<div class="run-stage">' +
           (run.done
             ? '<div class="round-chip">ALL ROUNDS DONE</div>'
-            : '<div class="round-chip" id="run-round">ROUND ' + roundNow + " / " + roundMax + "</div>") +
+            : (phase === "ready"
+              ? '<div class="round-chip" id="run-round">STARTING SOON</div>'
+              : '<div class="round-chip" id="run-round">ROUND ' + roundNow + " / " + roundMax + "</div>")) +
           '<div class="ring-wrap">' +
             '<svg viewBox="0 0 200 200" aria-hidden="true">' +
               '<circle class="track" cx="100" cy="100" r="' + RING_R + '"></circle>' +
