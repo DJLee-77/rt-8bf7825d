@@ -847,9 +847,22 @@ input:focus { border-color: var(--line-strong); }
   border-top: 1px solid var(--line);
 }
 .sheet-section { margin: 0 0 16px; }
+.phase-sheet .sheet-section {
+  margin: 0;
+  padding: 30px 0 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.phase-sheet .sheet-section:first-child {
+  padding-top: 2px;
+  border-top: none;
+}
 .phase-sheet .label,
 .phase-sheet .label-row .label {
   color: #FFD60A;
+}
+.phase-sheet .sheet-section > .label,
+.phase-sheet .sheet-section > .label-row {
+  margin-bottom: 12px;
 }
 .label-row {
   display: flex;
@@ -2307,9 +2320,9 @@ input:focus { border-color: var(--line-strong); }
 
     return (
       '<div class="topbar">' +
-        '<button type="button" class="icon-btn" data-action="cancel-edit" aria-label="Cancel">' + ic.back + "</button>" +
+        '<button type="button" class="icon-btn" data-action="cancel-edit" aria-label="Back">' + ic.back + "</button>" +
         "<h1>" + (state.draftIsNew ? "New Timer" : "Edit Timer") + "</h1>" +
-        '<button type="button" class="text-btn" data-action="save-edit" style="color:#fff">Save</button>' +
+        '<button type="button" class="text-btn" data-action="save-edit" style="color:#fff">Done</button>' +
       "</div>" +
       '<div class="scroll">' +
         '<div class="section"><div class="label">Title</div>' +
@@ -2523,34 +2536,98 @@ input:focus { border-color: var(--line-strong); }
     }, 50);
   }
 
-  function saveDraft() {
+  let editBaseline = null;
+  let editHistoryPushed = false;
+  let ignoreEditPop = false;
+
+  function draftFingerprint(preset) {
+    const p = makePreset(JSON.parse(JSON.stringify(preset || {})));
+    return JSON.stringify({
+      title: (p.title || "").trim(),
+      rounds: p.rounds,
+      workMs: p.workMs,
+      restMs: p.restMs,
+      warmupMs: p.warmupMs,
+      roundOverrides: p.roundOverrides || [],
+      sounds: p.sounds,
+      display: p.display
+    });
+  }
+
+  function syncEditorFields() {
     readTitle();
+    if (state.overlay && state.overlay.type === "phase" && state.draft) syncPhasePanel();
+  }
+
+  function isUntouchedNewDraft() {
+    if (!state.draft || !state.draftIsNew) return false;
+    syncEditorFields();
+    return draftFingerprint(state.draft) === editBaseline;
+  }
+
+  function persistDraft() {
+    if (state.view !== "edit" || !state.draft) return false;
+    syncEditorFields();
+    if (isUntouchedNewDraft()) return false;
     let title = (state.draft.title || "").trim();
-    if (!title) title = "Untitled";
+    if (!title) title = "New Timer";
     state.draft.title = title;
+    const input = document.getElementById("title-input");
+    if (input && input.value.trim() === "") input.value = title;
     state.draft.updatedAt = Date.now();
+    const saved = makePreset(state.draft);
     const existing = findPreset(state.draft.id);
     if (existing) {
-      const i = state.presets.indexOf(existing);
-      state.presets[i] = makePreset(state.draft);
+      state.presets[state.presets.indexOf(existing)] = saved;
     } else {
-      state.presets.unshift(makePreset(state.draft));
+      state.presets.unshift(saved);
     }
     saveStore();
+    state.draftIsNew = false;
+    editBaseline = draftFingerprint(state.draft);
+    return true;
+  }
+
+  function dropEditHistory() {
+    if (!editHistoryPushed) return;
+    editHistoryPushed = false;
+    ignoreEditPop = true;
+    try { history.back(); } catch (e) { ignoreEditPop = false; }
+    setTimeout(function () { ignoreEditPop = false; }, 400);
+  }
+
+  function leaveEditor() {
+    if (state.overlay) {
+      state.overlay = null;
+      renderOverlay();
+    }
     state.view = "list";
     state.draft = null;
+    state.draftIsNew = false;
     state.moreEdit = false;
     state.moreRounds = false;
+    editBaseline = null;
     render();
-    toast("Saved");
+    dropEditHistory();
+  }
+
+  function exitEditor(opts) {
+    opts = opts || {};
+    if (state.view !== "edit") return;
+    const saved = opts.persist === false ? false : persistDraft();
+    if (opts.toast && saved) toast("Saved");
+    const fromPop = !!opts.fromPopstate;
+    if (fromPop) editHistoryPushed = false;
+    leaveEditor();
+    if (fromPop) editHistoryPushed = false;
+  }
+
+  function saveDraft() {
+    exitEditor({ persist: true, toast: true });
   }
 
   function cancelEdit() {
-    state.view = "list";
-    state.draft = null;
-    state.moreEdit = false;
-    state.moreRounds = false;
-    render();
+    exitEditor({ persist: true, toast: false });
   }
 
   function openEditor(preset, isNew) {
@@ -2559,11 +2636,18 @@ input:focus { border-color: var(--line-strong); }
     state.moreEdit = false;
     state.moreRounds = !!(preset.roundOverrides && preset.roundOverrides.length);
     state.view = "edit";
+    editBaseline = draftFingerprint(state.draft);
     render();
     const input = document.getElementById("title-input");
     if (input && isNew) {
       input.focus();
       input.select();
+    }
+    if (!editHistoryPushed) {
+      try {
+        history.pushState({ rtView: "edit", id: state.draft.id }, "");
+        editHistoryPushed = true;
+      } catch (e) {}
     }
   }
 
@@ -2897,16 +2981,15 @@ input:focus { border-color: var(--line-strong); }
       return;
     }
     if (action === "duplicate") {
-      readTitle();
-      const copy = makePreset(JSON.parse(JSON.stringify(state.draft)));
+      persistDraft();
+      const src = state.draft || {};
+      const copy = makePreset(JSON.parse(JSON.stringify(src)));
       copy.id = uid();
-      copy.title = (state.draft.title || "Timer") + " copy";
+      copy.title = (src.title || "Timer") + " copy";
       copy.updatedAt = Date.now();
       state.presets.unshift(copy);
       saveStore();
-      state.view = "list";
-      state.draft = null;
-      render();
+      leaveEditor();
       toast("Duplicated");
       return;
     }
@@ -2917,11 +3000,11 @@ input:focus { border-color: var(--line-strong); }
         okLabel: "Delete",
         danger: true
       }, function () {
-        state.presets = state.presets.filter(function (p) { return p.id !== state.draft.id; });
-        saveStore();
-        state.draft = null;
-        state.view = "list";
-        render();
+        if (state.draft) {
+          state.presets = state.presets.filter(function (p) { return p.id !== state.draft.id; });
+          saveStore();
+        }
+        exitEditor({ persist: false, toast: false });
         toast("Deleted");
       });
       return;
@@ -3006,13 +3089,27 @@ input:focus { border-color: var(--line-strong); }
   document.addEventListener("change", onChange);
   document.addEventListener("pointerdown", function () { unlockAudio(); }, { once: false, passive: true });
 
+  function persistDraftIfHidden() {
+    if (state.view === "edit" && state.draft) persistDraft();
+  }
+
   document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") persistDraftIfHidden();
     if (document.visibilityState === "visible") {
       if (state.run && !state.run.paused && !state.run.done) {
         requestWake();
         catchUp();
       }
     }
+  });
+  window.addEventListener("pagehide", persistDraftIfHidden);
+
+  window.addEventListener("popstate", function () {
+    if (ignoreEditPop) {
+      ignoreEditPop = false;
+      return;
+    }
+    if (state.view === "edit") exitEditor({ persist: true, toast: false, fromPopstate: true });
   });
 
   document.addEventListener("keydown", function (e) {
