@@ -363,6 +363,76 @@ input:focus { border-color: var(--line-strong); }
 .mini-btn:active { background: var(--bg-hover); }
 .mini-btn.play { width: 44px; padding: 0; display: grid; place-items: center; }
 
+.switch {
+  width: 46px;
+  height: 28px;
+  border-radius: 14px;
+  background: #3a3a3e;
+  position: relative;
+  flex-shrink: 0;
+  padding: 0;
+  min-height: 28px;
+}
+.switch i {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff;
+  pointer-events: none;
+  transition: transform 0.15s ease;
+}
+.switch.on { background: var(--green); }
+.switch.on i { transform: translateX(18px); }
+.sound-row.off .info,
+.sound-row.off .mini-btn { opacity: 0.42; }
+.warn-meta {
+  display: block;
+  width: 100%;
+  text-align: left;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  margin-top: 2px;
+  padding: 2px 0;
+  min-height: 28px;
+  line-height: 1.35;
+}
+.warn-meta:active { color: var(--text); }
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 14px;
+}
+.chip {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 12px;
+  background: var(--btn);
+  font-weight: 700;
+  font-size: 15px;
+}
+.chip.on { background: var(--green); color: #0a0a0c; }
+.mode-row { display: flex; gap: 8px; margin: 4px 0 16px; }
+.mode-row .chip { flex: 1; }
+.warn-custom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.warn-custom input {
+  width: 88px;
+  text-align: center;
+  font-size: 20px;
+  font-weight: 700;
+  padding: 10px 8px;
+}
+.warn-custom span { color: var(--muted); font-size: 14px; font-weight: 600; }
+
 .edit-footer {
   display: flex;
   gap: 8px;
@@ -713,22 +783,35 @@ input:focus { border-color: var(--line-strong); }
     { id: "triple-bell", name: "Triple Bell" },
     { id: "short-buzzer", name: "Short Buzzer" },
     { id: "long-buzzer", name: "Long Buzzer" },
-    { id: "warning-buzz", name: "Warning Buzz" }
+    { id: "warning-buzz", name: "Warning Buzz" },
+    { id: "tick", name: "Tick / Beep" }
     // Future: user uploads can be appended as { id: "custom:<key>", name, kind: "file" }
   ];
 
+  const DEFAULT_WARN = {
+    ready: { enabled: true, sound: "tick", atSec: 3, mode: "ticks" },
+    work: { enabled: true, sound: "warning-buzz", atSec: 10, mode: "once" },
+    rest: { enabled: true, sound: "warning-buzz", atSec: 10, mode: "once" }
+  };
+
   const DEFAULT_SOUNDS = {
     workStart: "bell",
+    readyStart: "short-buzzer",
     restStart: "double-bell",
-    warning: "warning-buzz",
-    finish: "triple-bell"
+    finish: "triple-bell",
+    readyWarn: Object.assign({}, DEFAULT_WARN.ready),
+    workWarn: Object.assign({}, DEFAULT_WARN.work),
+    restWarn: Object.assign({}, DEFAULT_WARN.rest)
   };
 
   const SOUND_EVENTS = [
-    { key: "workStart", label: "Round start" },
-    { key: "restStart", label: "Rest start" },
-    { key: "warning", label: "Last 10 seconds" },
-    { key: "finish", label: "Finished" }
+    { key: "readyStart", label: "Get Ready start", kind: "cue" },
+    { key: "readyWarn", label: "Get Ready countdown", kind: "warn" },
+    { key: "workStart", label: "Round start", kind: "cue" },
+    { key: "workWarn", label: "Work ending", kind: "warn" },
+    { key: "restStart", label: "Rest start", kind: "cue" },
+    { key: "restWarn", label: "Rest ending", kind: "warn" },
+    { key: "finish", label: "Finished", kind: "cue" }
   ];
 
   // ---------- helpers ----------
@@ -751,10 +834,56 @@ input:focus { border-color: var(--line-strong); }
       sounds: Object.assign({}, DEFAULT_SOUNDS),
       updatedAt: Date.now()
     };
-    const sounds = Object.assign({}, DEFAULT_SOUNDS, partial.sounds || {});
+    const sounds = normalizeSounds(partial.sounds);
     const out = Object.assign(base, partial, { sounds: sounds });
     if (!hasWarmup) out.warmupMs = 10000;
     return out;
+  }
+
+  function cloneWarn(w) {
+    return { enabled: !!w.enabled, sound: w.sound, atSec: w.atSec, mode: w.mode === "ticks" ? "ticks" : "once" };
+  }
+
+  function normalizeWarn(raw, fallback) {
+    const d = cloneWarn(fallback);
+    if (!raw || typeof raw !== "object") return d;
+    if (typeof raw.enabled === "boolean") d.enabled = raw.enabled;
+    if (raw.sound) d.sound = raw.sound;
+    if (raw.atSec != null && raw.atSec !== "") {
+      const n = Math.round(Number(raw.atSec));
+      if (!isNaN(n)) d.atSec = Math.max(1, Math.min(599, n));
+    }
+    if (raw.mode === "ticks" || raw.mode === "once") d.mode = raw.mode;
+    return d;
+  }
+
+  function normalizeSounds(raw) {
+    raw = raw || {};
+    const oldWarning = typeof raw.warning === "string" ? raw.warning : null;
+    const workFallback = cloneWarn(DEFAULT_WARN.work);
+    const restFallback = cloneWarn(DEFAULT_WARN.rest);
+    // Old single "last 10 seconds" warning applied to work (and rest).
+    if (oldWarning && raw.workWarn == null) {
+      workFallback.sound = oldWarning;
+      workFallback.enabled = true;
+      workFallback.atSec = 10;
+      workFallback.mode = "once";
+    }
+    if (oldWarning && raw.restWarn == null) {
+      restFallback.sound = oldWarning;
+      restFallback.enabled = true;
+      restFallback.atSec = 10;
+      restFallback.mode = "once";
+    }
+    return {
+      workStart: raw.workStart || DEFAULT_SOUNDS.workStart,
+      readyStart: raw.readyStart || DEFAULT_SOUNDS.readyStart,
+      restStart: raw.restStart || DEFAULT_SOUNDS.restStart,
+      finish: raw.finish || DEFAULT_SOUNDS.finish,
+      readyWarn: normalizeWarn(raw.readyWarn, DEFAULT_WARN.ready),
+      workWarn: normalizeWarn(raw.workWarn, workFallback),
+      restWarn: normalizeWarn(raw.restWarn, restFallback)
+    };
   }
 
   function seedPresets() {
@@ -985,6 +1114,20 @@ input:focus { border-color: var(--line-strong); }
     }
   }
 
+  function playTick(ctx, when) {
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(1240, when);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.exponentialRampToValueAtTime(0.3, when + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + 0.09);
+    osc.connect(g);
+    g.connect(ctx.destination);
+    osc.start(when);
+    osc.stop(when + 0.11);
+  }
+
   function playSynth(id) {
     if (!audio.ctx) return;
     const ctx = audio.ctx;
@@ -1011,6 +1154,9 @@ input:focus { border-color: var(--line-strong); }
       case "warning-buzz":
         playWarningBuzz(ctx, when);
         break;
+      case "tick":
+        playTick(ctx, when);
+        break;
       default:
         break;
     }
@@ -1036,6 +1182,7 @@ input:focus { border-color: var(--line-strong); }
     moreRounds: false,
     run: null,
     overlay: null,
+    events: [],
     toast: null,
     wakeLock: null,
     loopInterval: null,
@@ -1069,25 +1216,69 @@ input:focus { border-color: var(--line-strong); }
     return state.presets.find(function (p) { return p.id === id; });
   }
 
+  function logEvent(ev) {
+    if (!state.events) state.events = [];
+    state.events.push(Object.assign({ t: Date.now() }, ev));
+  }
+
   function playPhaseCue(step, isFinish) {
     if (isFinish) {
       playSound(state.run.sounds.finish);
       vibrate([200, 80, 200, 80, 400]);
+      logEvent({ type: "cue", phase: "done", sound: state.run.sounds.finish });
       return;
     }
     if (!step) return;
-    if (step.phase === "work") {
+    if (step.phase === "ready") {
+      playSound(state.run.sounds.readyStart);
+      vibrate(80);
+      logEvent({ type: "cue", phase: "ready", sound: state.run.sounds.readyStart });
+    } else if (step.phase === "work") {
       // Also fires when Get Ready ends, which is when the first work round begins.
       playSound(state.run.sounds.workStart);
       vibrate(200);
+      logEvent({ type: "cue", phase: "work", sound: state.run.sounds.workStart });
     } else if (step.phase === "rest") {
       playSound(state.run.sounds.restStart);
       vibrate([120, 60, 120]);
+      logEvent({ type: "cue", phase: "rest", sound: state.run.sounds.restStart });
     }
   }
 
-  function shouldWarn(step) {
-    return step && (step.phase === "work" || step.phase === "rest") && step.duration > 10000;
+  function warnConfigFor(phase, sounds) {
+    if (phase === "ready") return sounds.readyWarn;
+    if (phase === "work") return sounds.workWarn;
+    if (phase === "rest") return sounds.restWarn;
+    return null;
+  }
+
+  function clampWarnAtSec(atSec, durationMs) {
+    const phaseSec = Math.floor(Math.max(0, durationMs) / 1000);
+    const maxAt = phaseSec - 1;
+    if (maxAt < 1) return 0;
+    return Math.min(Math.max(1, atSec), maxAt);
+  }
+
+  function processWarnings(step, rem) {
+    const run = state.run;
+    const cfg = warnConfigFor(step.phase, run.sounds);
+    if (!cfg || !cfg.enabled) return;
+    const at = clampWarnAtSec(cfg.atSec, step.duration);
+    if (at < 1 || rem <= 0) return;
+    const remSec = Math.max(0, Math.ceil(rem / 1000));
+    if (cfg.mode === "ticks") {
+      if (remSec >= 1 && remSec <= at && run.lastTickSec !== remSec) {
+        run.lastTickSec = remSec;
+        playSound(cfg.sound);
+        vibrate(40);
+        logEvent({ type: "warn", phase: step.phase, mode: "ticks", atSec: at, remainingSec: remSec, sound: cfg.sound });
+      }
+    } else if (rem <= at * 1000 && !run.warned) {
+      run.warned = true;
+      playSound(cfg.sound);
+      vibrate([80, 50, 80]);
+      logEvent({ type: "warn", phase: step.phase, mode: "once", atSec: at, remainingSec: remSec, sound: cfg.sound });
+    }
   }
 
   function startRun(preset) {
@@ -1101,16 +1292,18 @@ input:focus { border-color: var(--line-strong); }
     state.run = {
       presetId: preset.id,
       title: preset.title,
-      sounds: Object.assign({}, preset.sounds),
+      sounds: normalizeSounds(preset.sounds),
       steps: steps,
       index: 0,
       phaseStart: Date.now(),
       paused: false,
       pauseRemaining: null,
       warned: false,
+      lastTickSec: null,
       done: false,
       startedAt: Date.now()
     };
+    state.events = [];
     state.view = "run";
     render();
     playPhaseCue(steps[0], false);
@@ -1132,6 +1325,7 @@ input:focus { border-color: var(--line-strong); }
       run.done = true;
       run.index = run.steps.length;
       run.warned = true;
+      run.lastTickSec = null;
       stopLoop();
       releaseWake();
       return "done";
@@ -1139,6 +1333,7 @@ input:focus { border-color: var(--line-strong); }
     run.index = index;
     run.phaseStart = Date.now() - (overshoot || 0);
     run.warned = false;
+    run.lastTickSec = null;
     run.paused = false;
     run.pauseRemaining = null;
     return "step";
@@ -1154,11 +1349,7 @@ input:focus { border-color: var(--line-strong); }
       if (!step) break;
       const rem = step.duration - (Date.now() - run.phaseStart);
       if (rem > 0) {
-        if (shouldWarn(step) && rem <= 10000 && !run.warned) {
-          run.warned = true;
-          playSound(run.sounds.warning);
-          vibrate([80, 50, 80, 50, 80]);
-        }
+        processWarnings(step, rem);
         break;
       }
       lastKind = goToStep(run.index + 1, -rem);
@@ -1324,6 +1515,30 @@ input:focus { border-color: var(--line-strong); }
         "</div>";
       return;
     }
+    if (o.type === "warn") {
+      const cfg = state.draft.sounds[o.key];
+      const chips = [3, 5, 10, 30].map(function (n) {
+        return '<button type="button" class="chip' + (cfg.atSec === n ? " on" : "") + '" data-action="warn-chip" data-sec="' + n + '">' + n + "s</button>";
+      }).join("");
+      root.innerHTML =
+        '<div class="overlay" data-action="overlay-backdrop">' +
+          '<div class="sheet" role="dialog" aria-modal="true">' +
+            '<div class="grab"></div>' +
+            "<h3>" + escapeHtml(o.label) + "</h3>" +
+            '<div class="label" style="margin: 8px 4px 6px">Warn in the last</div>' +
+            '<div class="chip-row">' + chips + "</div>" +
+            '<div class="warn-custom"><input id="warn-custom-sec" type="number" inputmode="numeric" min="1" max="599" value="' + cfg.atSec + '"><span>seconds</span>' +
+              '<button type="button" class="mini-btn" data-action="warn-custom-apply">Set</button></div>' +
+            '<div class="label" style="margin: 4px 4px 6px">Play</div>' +
+            '<div class="mode-row">' +
+              '<button type="button" class="chip' + (cfg.mode === "once" ? " on" : "") + '" data-action="warn-mode" data-mode="once">Once</button>' +
+              '<button type="button" class="chip' + (cfg.mode === "ticks" ? " on" : "") + '" data-action="warn-mode" data-mode="ticks">Every second</button>' +
+            "</div>" +
+            '<button type="button" class="solid-btn wide" data-action="overlay-cancel">Done</button>' +
+          "</div>" +
+        "</div>";
+      return;
+    }
     if (o.type === "time") {
       const total = Math.max(0, Math.round(o.ms / 1000));
       const m = Math.floor(total / 60);
@@ -1421,6 +1636,22 @@ input:focus { border-color: var(--line-strong); }
     const d = state.draft;
     const moreOpen = state.moreEdit ? " open" : "";
     const soundRows = SOUND_EVENTS.map(function (ev) {
+      if (ev.kind === "warn") {
+        const cfg = d.sounds[ev.key];
+        const mode = cfg.mode === "ticks" ? "every second" : "once";
+        const summary = soundName(cfg.sound) + " · last " + cfg.atSec + "s · " + mode;
+        return (
+          '<div class="sound-row' + (cfg.enabled ? "" : " off") + '">' +
+            '<button type="button" class="switch' + (cfg.enabled ? " on" : "") + '" data-action="toggle-warn" data-warn="' + ev.key + '" role="switch" aria-checked="' + (cfg.enabled ? "true" : "false") + '" aria-label="Toggle ' + ev.label + '"><i></i></button>' +
+            '<div class="info">' +
+              '<div class="k">' + ev.label + "</div>" +
+              '<button type="button" class="warn-meta" data-action="edit-warn" data-warn="' + ev.key + '">' + escapeHtml(summary) + "</button>" +
+            "</div>" +
+            '<button type="button" class="mini-btn play" data-action="preview-sound" data-sound="' + cfg.sound + '" aria-label="Preview">' + ic.preview + "</button>" +
+            '<button type="button" class="mini-btn" data-action="choose-sound" data-event="' + ev.key + '">Change</button>' +
+          "</div>"
+        );
+      }
       const id = d.sounds[ev.key];
       return (
         '<div class="sound-row">' +
@@ -1589,7 +1820,9 @@ input:focus { border-color: var(--line-strong); }
     const rem = remainingMs();
     const progress = Math.max(0, Math.min(1, rem / step.duration));
     timeEl.textContent = formatMs(rem);
-    const warn = !run.paused && rem <= 10000 && rem > 0 && shouldWarn(step);
+    const cfg = warnConfigFor(step.phase, run.sounds);
+    const at = cfg && cfg.enabled ? clampWarnAtSec(cfg.atSec, step.duration) : 0;
+    const warn = !run.paused && at >= 1 && rem > 0 && rem <= at * 1000;
     timeEl.className = "big-time" + (warn ? " warn" : "");
     if (ring) ring.setAttribute("stroke-dashoffset", (RING_C * (1 - progress)).toFixed(2));
     if (phaseEl && !run.paused) phaseEl.textContent = step.label;
@@ -1861,11 +2094,13 @@ input:focus { border-color: var(--line-strong); }
       readTitle();
       const key = t.getAttribute("data-event");
       const ev = SOUND_EVENTS.find(function (x) { return x.key === key; });
+      const current = ev && ev.kind === "warn" ? state.draft.sounds[key].sound : state.draft.sounds[key];
       state.overlay = {
         type: "sound",
         event: key,
+        kind: ev ? ev.kind : "cue",
         label: ev ? ev.label : "Sound",
-        current: state.draft.sounds[key]
+        current: current
       };
       renderOverlay();
       return;
@@ -1873,11 +2108,62 @@ input:focus { border-color: var(--line-strong); }
     if (action === "pick-sound") {
       const id = t.getAttribute("data-id");
       if (state.overlay && state.overlay.type === "sound" && state.draft) {
-        state.draft.sounds[state.overlay.event] = id;
+        const key = state.overlay.event;
+        const ev = SOUND_EVENTS.find(function (x) { return x.key === key; });
+        if (ev && ev.kind === "warn") state.draft.sounds[key].sound = id;
+        else state.draft.sounds[key] = id;
         playSound(id);
       }
       closeOverlay();
       render();
+      return;
+    }
+    if (action === "toggle-warn") {
+      readTitle();
+      const key = t.getAttribute("data-warn");
+      if (state.draft && state.draft.sounds[key]) {
+        state.draft.sounds[key].enabled = !state.draft.sounds[key].enabled;
+      }
+      render();
+      return;
+    }
+    if (action === "edit-warn") {
+      readTitle();
+      const key = t.getAttribute("data-warn");
+      const ev = SOUND_EVENTS.find(function (x) { return x.key === key; });
+      state.overlay = { type: "warn", key: key, label: ev ? ev.label : "Warning" };
+      renderOverlay();
+      return;
+    }
+    if (action === "warn-chip") {
+      if (state.overlay && state.overlay.type === "warn" && state.draft) {
+        state.draft.sounds[state.overlay.key].atSec = Number(t.getAttribute("data-sec"));
+        render();
+        state.overlay = { type: "warn", key: state.overlay.key, label: state.overlay.label };
+        renderOverlay();
+      }
+      return;
+    }
+    if (action === "warn-custom-apply") {
+      const input = document.getElementById("warn-custom-sec");
+      const n = Math.max(1, Math.min(599, Math.round(Number(input && input.value) || 1)));
+      if (state.overlay && state.overlay.type === "warn" && state.draft) {
+        state.draft.sounds[state.overlay.key].atSec = n;
+        const keep = { type: "warn", key: state.overlay.key, label: state.overlay.label };
+        render();
+        state.overlay = keep;
+        renderOverlay();
+      }
+      return;
+    }
+    if (action === "warn-mode") {
+      if (state.overlay && state.overlay.type === "warn" && state.draft) {
+        state.draft.sounds[state.overlay.key].mode = t.getAttribute("data-mode") === "ticks" ? "ticks" : "once";
+        const keep = { type: "warn", key: state.overlay.key, label: state.overlay.label };
+        render();
+        state.overlay = keep;
+        renderOverlay();
+      }
       return;
     }
     if (action === "duplicate") {
@@ -1999,7 +2285,22 @@ input:focus { border-color: var(--line-strong); }
     getState: function () { return state; },
     formatMs: formatMs,
     startRun: startRun,
-    saveStore: saveStore
+    saveStore: saveStore,
+    makePreset: makePreset,
+    normalizeSounds: normalizeSounds,
+    clampWarnAtSec: clampWarnAtSec,
+    events: function () { return state.events || []; },
+    clearEvents: function () { state.events = []; },
+    setRemainingMs: function (ms) {
+      const run = state.run;
+      if (!run || run.done) return;
+      const step = run.steps[run.index];
+      if (!step) return;
+      const rem = Math.max(0, Math.min(step.duration, ms));
+      if (run.paused) run.pauseRemaining = rem;
+      else run.phaseStart = Date.now() - (step.duration - rem);
+    },
+    tick: function () { if (typeof catchUp === "function") catchUp(); }
   };
 
   render();
