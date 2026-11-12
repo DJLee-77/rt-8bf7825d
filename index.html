@@ -474,17 +474,36 @@ input:focus { border-color: var(--line-strong); }
   padding: 0 16px 8px;
   gap: 8px;
 }
+.run-headline {
+  font-weight: 800;
+  font-size: 52px;
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+  text-align: center;
+  color: var(--phase);
+  max-width: 100%;
+  width: 100%;
+  padding: 2px 10px 10px;
+  margin: 0;
+  overflow: hidden;
+  word-break: break-word;
+  transition: color 0.3s ease;
+}
 .round-chip {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
+  font-size: clamp(32px, 11vw, 54px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
   text-transform: uppercase;
-  color: var(--muted);
-  margin-bottom: 4px;
+  color: var(--text);
+  margin-top: 14px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  text-align: center;
 }
 .ring-wrap {
   position: relative;
-  width: min(78vw, 340px);
+  width: min(68vw, 300px);
   aspect-ratio: 1;
   display: grid;
   place-items: center;
@@ -511,15 +530,7 @@ input:focus { border-color: var(--line-strong); }
   text-align: center;
   padding-top: 6px;
 }
-.phase-label {
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: 0.32em;
-  text-transform: uppercase;
-  color: var(--phase);
-  margin-bottom: 4px;
-  transition: color 0.3s ease;
-}
+.phase-label { display: none; }
 .big-time {
   font-size: clamp(64px, 22vw, 108px);
   font-weight: 700;
@@ -583,8 +594,8 @@ input:focus { border-color: var(--line-strong); }
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.55);
-  z-index: 20;
+  background: rgba(0,0,0,0.72);
+  z-index: 40;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -758,6 +769,96 @@ input:focus { border-color: var(--line-strong); }
 .more-body { display: none; padding-bottom: 8px; }
 .more-body.open { display: block; }
 
+.phase-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  min-height: 76px;
+}
+.phase-row:active { background: var(--bg-card-2); }
+.phase-row .info { flex: 1; min-width: 0; }
+.phase-row .k {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.phase-row .v {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+}
+.phase-row .edit-aff {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.phase-row .edit-aff svg { width: 18px; height: 18px; display: block; }
+
+.sheet.phase-sheet {
+  max-height: 96dvh;
+  max-height: 96vh;
+  min-height: 88dvh;
+  min-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 0;
+  background: #1c1c21;
+}
+.phase-sheet .sheet-scroll {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 4px 12px;
+  flex: 1;
+}
+.phase-sheet .sheet-footer {
+  flex-shrink: 0;
+  padding: 10px 4px calc(14px + var(--safe-bot));
+  background: #1c1c21;
+  border-top: 1px solid var(--line);
+}
+.sheet-section { margin: 0 0 16px; }
+.label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.label-row .label { margin: 0; }
+.sound-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 4px;
+}
+.sound-chip {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 20px;
+  background: var(--btn);
+  font-size: 13px;
+  font-weight: 600;
+}
+.sound-chip.on { background: var(--green); color: #0a0a0c; }
+.sound-chip:active { transform: scale(0.97); }
+.phase-hint { margin: 6px 0 0; font-size: 13px; color: var(--faint); line-height: 1.4; }
+
 /* Run: only pause + stop */
 .run-controls.simple { gap: 28px; }
 .run-controls.simple .ctrl.main .hit {
@@ -837,7 +938,76 @@ input:focus { border-color: var(--line-strong); }
     const sounds = normalizeSounds(partial.sounds);
     const out = Object.assign(base, partial, { sounds: sounds });
     if (!hasWarmup) out.warmupMs = 10000;
+    out.display = normalizeDisplay(partial.display || out.display);
     return out;
+  }
+
+  function normalizeDisplay(raw) {
+    raw = raw || {};
+    return {
+      workUseTitle: raw.workUseTitle == null ? true : !!raw.workUseTitle,
+      work: raw.work != null ? String(raw.work) : "",
+      rest: raw.rest != null ? String(raw.rest) : "REST",
+      ready: raw.ready != null ? String(raw.ready) : "GET READY"
+    };
+  }
+
+  function shortSoundName(id) {
+    const map = {
+      bell: "Bell",
+      "double-bell": "Double Bell",
+      "triple-bell": "Triple Bell",
+      "short-buzzer": "Short Buzzer",
+      "long-buzzer": "Long Buzzer",
+      "warning-buzz": "Warning Buzz",
+      tick: "Tick"
+    };
+    return map[id] || soundName(id);
+  }
+
+  function phaseSummary(preset, phase) {
+    const field = phase === "work" ? "workMs" : phase === "rest" ? "restMs" : "warmupMs";
+    const startKey = phase === "work" ? "workStart" : phase === "rest" ? "restStart" : "readyStart";
+    const warnKey = phase === "work" ? "workWarn" : phase === "rest" ? "restWarn" : "readyWarn";
+    const ms = preset[field] || 0;
+    if (phase === "ready" && ms === 0) return "0:00 · skipped";
+    const parts = [formatMs(ms), shortSoundName(preset.sounds[startKey])];
+    const w = preset.sounds[warnKey];
+    if (w && w.enabled) {
+      parts.push((w.mode === "ticks" ? "ticks last " : "warn last ") + w.atSec + "s");
+    }
+    return parts.join(" · ");
+  }
+
+  function displayLabel(run, phase, done) {
+    if (done) return "COMPLETE";
+    const d = (run && run.display) || normalizeDisplay(null);
+    const title = ((run && run.title) || "").trim();
+    if (phase === "work") {
+      if (d.workUseTitle) {
+        const t = title || "WORK";
+        return /[!！]$/.test(t) ? t : (t + "!");
+      }
+      const custom = (d.work || "").trim();
+      return custom || "WORK";
+    }
+    if (phase === "rest") return ((d.rest || "").trim()) || "REST";
+    if (phase === "ready") return ((d.ready || "").trim()) || "GET READY";
+    return "";
+  }
+
+  function fitPhaseLabel(el) {
+    if (!el) return;
+    el.style.fontSize = "";
+    const min = 22;
+    let size = 52;
+    el.style.fontSize = size + "px";
+    const maxH = function () { return size * 2.35; };
+    let guard = 0;
+    while (guard++ < 40 && size > min && (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > maxH() + 2)) {
+      size -= 1;
+      el.style.fontSize = size + "px";
+    }
   }
 
   function cloneWarn(w) {
@@ -1292,6 +1462,7 @@ input:focus { border-color: var(--line-strong); }
     state.run = {
       presetId: preset.id,
       title: preset.title,
+      display: normalizeDisplay(preset.display),
       sounds: normalizeSounds(preset.sounds),
       steps: steps,
       index: 0,
@@ -1435,8 +1606,11 @@ input:focus { border-color: var(--line-strong); }
 
   // ---------- overlays ----------
   function closeOverlay() {
+    const wasPhase = state.overlay && state.overlay.type === "phase";
+    if (wasPhase) syncPhasePanel();
     state.overlay = null;
     renderOverlay();
+    if (wasPhase && state.view === "edit" && state.draft) render();
   }
 
   function toast(msg) {
@@ -1466,6 +1640,167 @@ input:focus { border-color: var(--line-strong); }
     el.textContent = state.toast;
   }
 
+  function soundPickHTML(currentId, eventKey) {
+    return '<div class="sound-picks" data-event="' + eventKey + '">' +
+      SOUND_LIBRARY.map(function (s) {
+        return '<button type="button" class="sound-chip' + (s.id === currentId ? " on" : "") +
+          '" data-action="phase-pick-sound" data-event="' + eventKey + '" data-id="' + s.id + '">' +
+          escapeHtml(s.name) + "</button>";
+      }).join("") +
+    "</div>";
+  }
+
+  function warnBlockHTML(cfg, warnKey) {
+    const chips = [3, 5, 10, 30].map(function (n) {
+      return '<button type="button" class="chip' + (cfg.atSec === n ? " on" : "") + '" data-action="phase-warn-chip" data-sec="' + n + '">' + n + "s</button>";
+    }).join("");
+    return (
+      '<div class="sheet-section">' +
+        '<div class="label-row"><div class="label">Ending warning</div>' +
+          '<button type="button" class="switch' + (cfg.enabled ? " on" : "") + '" data-action="phase-toggle-warn" data-warn="' + warnKey + '" role="switch" aria-checked="' + (cfg.enabled ? "true" : "false") + '" aria-label="Toggle ending warning"><i></i></button>' +
+        "</div>" +
+        '<div class="warn-body' + (cfg.enabled ? "" : " hidden") + '" id="phase-warn-body">' +
+          '<div class="label">Warning sound</div>' +
+          soundPickHTML(cfg.sound, warnKey) +
+          '<div class="label">Warn in the last</div>' +
+          '<div class="chip-row">' + chips + "</div>" +
+          '<div class="warn-custom"><input id="warn-custom-sec" type="number" inputmode="numeric" min="1" max="599" value="' + cfg.atSec + '"><span>seconds</span>' +
+            '<button type="button" class="mini-btn" data-action="phase-warn-custom">Set</button></div>' +
+          '<div class="label">Play</div>' +
+          '<div class="mode-row">' +
+            '<button type="button" class="chip' + (cfg.mode === "once" ? " on" : "") + '" data-action="phase-warn-mode" data-mode="once">Once</button>' +
+            '<button type="button" class="chip' + (cfg.mode === "ticks" ? " on" : "") + '" data-action="phase-warn-mode" data-mode="ticks">Every second</button>' +
+          "</div>" +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  function phaseField(phase) {
+    return phase === "work" ? "workMs" : phase === "rest" ? "restMs" : "warmupMs";
+  }
+
+  function phaseStartKey(phase) {
+    return phase === "work" ? "workStart" : phase === "rest" ? "restStart" : "readyStart";
+  }
+
+  function phaseWarnKey(phase) {
+    return phase === "work" ? "workWarn" : phase === "rest" ? "restWarn" : "readyWarn";
+  }
+
+  function phaseTitle(phase) {
+    return phase === "work" ? "Work" : phase === "rest" ? "Rest" : "Get Ready";
+  }
+
+  function syncPhasePanel() {
+    if (!state.overlay || state.overlay.type !== "phase" || !state.draft) return;
+    const phase = state.overlay.phase;
+    if (!state.draft.display) state.draft.display = normalizeDisplay(null);
+    const workInp = document.getElementById("phase-display-work");
+    const restInp = document.getElementById("phase-display-rest");
+    const readyInp = document.getElementById("phase-display-ready");
+    if (workInp) state.draft.display.work = workInp.value;
+    if (restInp) state.draft.display.rest = restInp.value;
+    if (readyInp) state.draft.display.ready = readyInp.value;
+    const customSec = document.getElementById("warn-custom-sec");
+    if (customSec && String(customSec.value).trim() !== "") {
+      const n = Math.max(1, Math.min(599, Math.round(Number(customSec.value) || 1)));
+      const warnKey = phaseWarnKey(phase);
+      if (state.draft.sounds[warnKey]) state.draft.sounds[warnKey].atSec = n;
+    }
+    const minEl = document.getElementById("phase-min");
+    const secEl = document.getElementById("phase-sec");
+    if (minEl && secEl) {
+      const m = Math.max(0, Math.min(99, parseInt(minEl.value, 10) || 0));
+      const s = Math.max(0, Math.min(59, parseInt(secEl.value, 10) || 0));
+      const field = phaseField(phase);
+      const minMs = field === "workMs" ? 1000 : 0;
+      state.draft[field] = clampTime((m * 60 + s) * 1000, minMs);
+    }
+  }
+
+  function renderPhaseSheet() {
+    const phase = state.overlay.phase;
+    const d = state.draft;
+    const field = phaseField(phase);
+    const ms = d[field] || 0;
+    const total = Math.max(0, Math.round(ms / 1000));
+    const min = Math.floor(total / 60);
+    const sec = total % 60;
+    const startKey = phaseStartKey(phase);
+    const warnKey = phaseWarnKey(phase);
+    const allowZero = field !== "workMs";
+    const display = d.display || normalizeDisplay(null);
+    const title = (d.title || "").trim() || "Untitled";
+    const titleShown = /[!！]$/.test(title) ? title : (title + "!");
+
+    let displayBlock = "";
+    if (phase === "work") {
+      displayBlock =
+        '<div class="sheet-section"><div class="label">Display</div>' +
+          '<div class="mode-row">' +
+            '<button type="button" class="chip' + (display.workUseTitle ? " on" : "") + '" data-action="phase-work-show" data-mode="title">Timer name</button>' +
+            '<button type="button" class="chip' + (!display.workUseTitle ? " on" : "") + '" data-action="phase-work-show" data-mode="custom">Custom text</button>' +
+          "</div>" +
+          (display.workUseTitle
+            ? '<p class="phase-hint">Shows “' + escapeHtml(titleShown) + '” during work rounds.</p>'
+            : '<input id="phase-display-work" type="text" maxlength="40" value="' + escapeHtml(display.work) + '" placeholder="WORK">') +
+        "</div>";
+    } else if (phase === "rest") {
+      displayBlock =
+        '<div class="sheet-section"><div class="label">Display text</div>' +
+          '<input id="phase-display-rest" type="text" maxlength="40" value="' + escapeHtml(display.rest) + '" placeholder="REST">' +
+        "</div>";
+    } else {
+      displayBlock =
+        '<div class="sheet-section"><div class="label">Display text</div>' +
+          '<input id="phase-display-ready" type="text" maxlength="40" value="' + escapeHtml(display.ready) + '" placeholder="GET READY">' +
+        "</div>";
+    }
+
+    const durationHint = phase === "ready" ? '<p class="phase-hint">Set 0:00 to skip Get Ready and start on the first work round.</p>' : "";
+
+    const finishBlock = phase === "work"
+      ? ('<div class="sheet-section"><div class="label">Final finish sound</div>' +
+         soundPickHTML(d.sounds.finish, "finish") +
+         '<p class="phase-hint">Plays after the last work round.</p></div>')
+      : "";
+
+    return (
+      '<div class="overlay" data-action="overlay-backdrop">' +
+        '<div class="sheet phase-sheet" role="dialog" aria-modal="true">' +
+          '<div class="grab"></div>' +
+          "<h3>" + phaseTitle(phase) + "</h3>" +
+          '<div class="sheet-scroll">' +
+            '<div class="sheet-section"><div class="label">Duration</div>' +
+              '<div class="stepper">' +
+                '<button type="button" class="step-btn" data-action="phase-nudge" data-delta="-60000">−1m</button>' +
+                '<button type="button" class="step-btn" data-action="phase-nudge" data-delta="-5000">−5s</button>' +
+                '<span class="time-value" id="phase-time">' + formatMs(ms) + "</span>" +
+                '<button type="button" class="step-btn" data-action="phase-nudge" data-delta="5000">+5s</button>' +
+                '<button type="button" class="step-btn" data-action="phase-nudge" data-delta="60000">+1m</button>' +
+              "</div>" +
+              '<div class="warn-custom" style="margin-top:10px">' +
+                '<input id="phase-min" type="number" inputmode="numeric" min="0" max="99" value="' + min + '"><span>min</span>' +
+                '<input id="phase-sec" type="number" inputmode="numeric" min="0" max="59" value="' + sec + '"><span>sec</span>' +
+              "</div>" +
+              durationHint +
+            "</div>" +
+            displayBlock +
+            '<div class="sheet-section"><div class="label">Start sound</div>' +
+              soundPickHTML(d.sounds[startKey], startKey) +
+            "</div>" +
+            warnBlockHTML(d.sounds[warnKey], warnKey) +
+            finishBlock +
+          "</div>" +
+          '<div class="sheet-footer">' +
+            '<button type="button" class="solid-btn wide" data-action="phase-done">Done</button>' +
+          "</div>" +
+        "</div>" +
+      "</div>"
+    );
+  }
+
   function renderOverlay() {
     let root = document.getElementById("overlay-root");
     if (!root) {
@@ -1492,6 +1827,10 @@ input:focus { border-color: var(--line-strong); }
             "</div>" +
           "</div>" +
         "</div>";
+      return;
+    }
+    if (o.type === "phase") {
+      root.innerHTML = renderPhaseSheet();
       return;
     }
     if (o.type === "sound") {
@@ -1571,6 +1910,7 @@ input:focus { border-color: var(--line-strong); }
       pause: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4.5" height="14" rx="1"/><rect x="13.5" y="5" width="4.5" height="14" rx="1"/></svg>',
       play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5L8 5.5z"/></svg>',
       chev: '<svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>',
+      chevRight: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>',
       preview: '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5.5v13l11-6.5L8 5.5z"/></svg>'
     };
   }
@@ -1635,32 +1975,15 @@ input:focus { border-color: var(--line-strong); }
     const ic = icons();
     const d = state.draft;
     const moreOpen = state.moreEdit ? " open" : "";
-    const soundRows = SOUND_EVENTS.map(function (ev) {
-      if (ev.kind === "warn") {
-        const cfg = d.sounds[ev.key];
-        const mode = cfg.mode === "ticks" ? "every second" : "once";
-        const summary = soundName(cfg.sound) + " · last " + cfg.atSec + "s · " + mode;
-        return (
-          '<div class="sound-row' + (cfg.enabled ? "" : " off") + '">' +
-            '<button type="button" class="switch' + (cfg.enabled ? " on" : "") + '" data-action="toggle-warn" data-warn="' + ev.key + '" role="switch" aria-checked="' + (cfg.enabled ? "true" : "false") + '" aria-label="Toggle ' + ev.label + '"><i></i></button>' +
-            '<div class="info">' +
-              '<div class="k">' + ev.label + "</div>" +
-              '<button type="button" class="warn-meta" data-action="edit-warn" data-warn="' + ev.key + '">' + escapeHtml(summary) + "</button>" +
-            "</div>" +
-            '<button type="button" class="mini-btn play" data-action="preview-sound" data-sound="' + cfg.sound + '" aria-label="Preview">' + ic.preview + "</button>" +
-            '<button type="button" class="mini-btn" data-action="choose-sound" data-event="' + ev.key + '">Change</button>' +
-          "</div>"
-        );
-      }
-      const id = d.sounds[ev.key];
+
+    function phaseRow(phase, label) {
       return (
-        '<div class="sound-row">' +
-          '<div class="info"><div class="k">' + ev.label + '</div><div class="v">' + escapeHtml(soundName(id)) + "</div></div>" +
-          '<button type="button" class="mini-btn play" data-action="preview-sound" data-sound="' + id + '" aria-label="Preview">' + ic.preview + "</button>" +
-          '<button type="button" class="mini-btn" data-action="choose-sound" data-event="' + ev.key + '">Change</button>' +
-        "</div>"
+        '<button type="button" class="phase-row" data-action="open-phase" data-phase="' + phase + '">' +
+          '<div class="info"><div class="k">' + label + '</div><div class="v">' + escapeHtml(phaseSummary(d, phase)) + "</div></div>" +
+          '<span class="edit-aff">Edit ' + ic.chevRight + "</span>" +
+        "</button>"
       );
-    }).join("");
+    }
 
     let roundsHtml = "";
     if (state.moreRounds || (d.roundOverrides && d.roundOverrides.length)) {
@@ -1696,24 +2019,14 @@ input:focus { border-color: var(--line-strong); }
       "</div>" +
       '<div class="scroll">' +
         '<div class="section"><div class="label">Title</div>' +
-          '<input id="title-input" type="text" maxlength="48" value="' + escapeHtml(d.title) + '" placeholder="e.g. Boxing">' +
+          '<input id="title-input" type="text" maxlength="48" value="' + escapeHtml(d.title) + '" placeholder="e.g. Jump Rope">' +
         "</div>" +
         '<div class="section"><div class="label">Rounds</div>' +
           stepper("rounds", String(d.rounds), -1, 1, "−", "+") +
         "</div>" +
-        '<div class="section"><div class="label">Work</div>' +
-          stepper("workMs", formatMs(d.workMs), -5000, 5000, "−5s", "+5s") +
-        "</div>" +
-        '<div class="section"><div class="label">Rest</div>' +
-          stepper("restMs", formatMs(d.restMs), -5000, 5000, "−5s", "+5s") +
-        "</div>" +
-        '<div class="section"><div class="label">Get Ready</div>' +
-          stepper("warmupMs", formatMs(d.warmupMs || 0), -5000, 5000, "−5s", "+5s") +
-          '<p class="hint">A countdown before the first round. Set 0:00 to skip it.</p>' +
-        "</div>" +
-        '<div class="section"><div class="label">Sounds</div>' + soundRows +
-          '<p class="hint">Bells and buzzers play from this phone. Built-in iPhone sounds can’t be used in a web app.</p>' +
-        "</div>" +
+        phaseRow("work", "Work") +
+        phaseRow("rest", "Rest") +
+        phaseRow("ready", "Get Ready") +
         '<div class="more-wrap">' +
           '<button type="button" class="more-toggle' + moreOpen + '" data-action="toggle-edit-more">More options ' + ic.chev + "</button>" +
           '<div class="more-body' + moreOpen + '">' +
@@ -1723,6 +2036,10 @@ input:focus { border-color: var(--line-strong); }
               "</button>" +
               roundsHtml +
             "</div>" +
+            '<div class="edit-footer">' +
+              '<button type="button" class="ghost-btn" data-action="export">Export</button>' +
+              '<button type="button" class="ghost-btn" data-action="import">Import</button>' +
+            "</div>" +
             (state.draftIsNew ? "" :
               '<div class="edit-footer">' +
                 '<button type="button" class="ghost-btn" data-action="duplicate">Duplicate</button>' +
@@ -1730,6 +2047,7 @@ input:focus { border-color: var(--line-strong); }
               "</div>") +
           "</div>" +
         "</div>" +
+        '<input id="import-file" class="sr-only" type="file" accept="application/json,.json">' +
       "</div>"
     );
   }
@@ -1755,23 +2073,25 @@ input:focus { border-color: var(--line-strong); }
     const dur = run.done ? 1 : step.duration;
     const progress = run.done ? 0 : Math.max(0, Math.min(1, rem / dur));
     const offset = RING_C * (1 - progress);
-    const warn = !run.done && !run.paused && rem <= 10000 && rem > 0 && (step.phase === "work" || step.phase === "rest") && step.duration > 10000;
+    const cfg = !run.done ? warnConfigFor(step.phase, run.sounds) : null;
+    const at = cfg && cfg.enabled ? clampWarnAtSec(cfg.atSec, step.duration) : 0;
+    const warn = !run.done && !run.paused && at >= 1 && rem > 0 && rem <= at * 1000;
     const paused = run.paused;
     const roundMax = totalRounds(run);
     const roundNow = step.round;
+    const headline = displayLabel(run, phase, run.done);
+    const roundText = run.done
+      ? "ALL ROUNDS DONE"
+      : (phase === "ready" ? "STARTING SOON" : ("ROUND " + roundNow + " / " + roundMax));
 
     return (
       '<div id="view-run" data-phase="' + phase + '">' +
         '<div class="topbar">' +
-          '<div class="title-block"><h1>' + escapeHtml(run.title) + "</h1></div>" +
+          "<div class=\"title-block\"></div>" +
           '<button type="button" class="icon-btn" data-action="stop" aria-label="Stop">' + ic.close + "</button>" +
         "</div>" +
         '<div class="run-stage">' +
-          (run.done
-            ? '<div class="round-chip">ALL ROUNDS DONE</div>'
-            : (phase === "ready"
-              ? '<div class="round-chip" id="run-round">STARTING SOON</div>'
-              : '<div class="round-chip" id="run-round">ROUND ' + roundNow + " / " + roundMax + "</div>")) +
+          '<div class="run-headline" id="run-phase">' + escapeHtml(headline) + "</div>" +
           '<div class="ring-wrap">' +
             '<svg viewBox="0 0 200 200" aria-hidden="true">' +
               '<circle class="track" cx="100" cy="100" r="' + RING_R + '"></circle>' +
@@ -1779,10 +2099,10 @@ input:focus { border-color: var(--line-strong); }
                 'stroke-dasharray="' + RING_C.toFixed(2) + '" stroke-dashoffset="' + offset.toFixed(2) + '"></circle>' +
             "</svg>" +
             '<div class="ring-center">' +
-              '<div class="phase-label" id="run-phase">' + (run.done ? "COMPLETE" : (paused ? "PAUSED" : step.label)) + "</div>" +
               '<div class="big-time' + (warn ? " warn" : "") + '" id="run-time">' + (run.done ? "0:00" : formatMs(rem)) + "</div>" +
             "</div>" +
           "</div>" +
+          '<div class="round-chip" id="run-round">' + escapeHtml(roundText) + "</div>" +
         "</div>" +
         '<div class="run-controls simple">' +
           (run.done
@@ -1801,6 +2121,7 @@ input:focus { border-color: var(--line-strong); }
     // Re-render the run view when phase/pause/done changes (not every tick).
     if (state.view !== "run") return;
     app.innerHTML = renderRun();
+    fitPhaseLabel(document.getElementById("run-phase"));
   }
 
   function updateRunUI() {
@@ -1808,7 +2129,6 @@ input:focus { border-color: var(--line-strong); }
     const run = state.run;
     const timeEl = document.getElementById("run-time");
     const ring = document.getElementById("run-ring");
-    const phaseEl = document.getElementById("run-phase");
     if (!timeEl) return;
     if (run.done) {
       timeEl.textContent = "0:00";
@@ -1825,7 +2145,6 @@ input:focus { border-color: var(--line-strong); }
     const warn = !run.paused && at >= 1 && rem > 0 && rem <= at * 1000;
     timeEl.className = "big-time" + (warn ? " warn" : "");
     if (ring) ring.setAttribute("stroke-dashoffset", (RING_C * (1 - progress)).toFixed(2));
-    if (phaseEl && !run.paused) phaseEl.textContent = step.label;
   }
 
   function render() {
@@ -1833,6 +2152,10 @@ input:focus { border-color: var(--line-strong); }
     else if (state.view === "run") app.innerHTML = renderRun();
     else app.innerHTML = renderList();
     renderOverlay();
+    if (state.view === "run") {
+      fitPhaseLabel(document.getElementById("run-phase"));
+      requestAnimationFrame(function () { fitPhaseLabel(document.getElementById("run-phase")); });
+    }
   }
 
   // ---------- editor actions ----------
@@ -2086,6 +2409,118 @@ input:focus { border-color: var(--line-strong); }
       render();
       return;
     }
+    if (action === "open-phase") {
+      readTitle();
+      unlockAudio();
+      if (!state.draft.display) state.draft.display = normalizeDisplay(null);
+      state.overlay = { type: "phase", phase: t.getAttribute("data-phase") };
+      renderOverlay();
+      return;
+    }
+    if (action === "phase-done") {
+      closeOverlay();
+      return;
+    }
+    if (action === "phase-nudge") {
+      if (!state.overlay || state.overlay.type !== "phase" || !state.draft) return;
+      syncPhasePanel();
+      const field = phaseField(state.overlay.phase);
+      const delta = Number(t.getAttribute("data-delta"));
+      const minMs = field === "workMs" ? 1000 : 0;
+      state.draft[field] = clampTime((state.draft[field] || 0) + delta, minMs);
+      const ms = state.draft[field] || 0;
+      const total = Math.max(0, Math.round(ms / 1000));
+      const timeEl = document.getElementById("phase-time");
+      const minEl = document.getElementById("phase-min");
+      const secEl = document.getElementById("phase-sec");
+      if (timeEl) timeEl.textContent = formatMs(ms);
+      if (minEl) minEl.value = String(Math.floor(total / 60));
+      if (secEl) secEl.value = String(total % 60);
+      return;
+    }
+    if (action === "phase-pick-sound") {
+      if (!state.overlay || state.overlay.type !== "phase" || !state.draft) return;
+      const key = t.getAttribute("data-event");
+      const id = t.getAttribute("data-id");
+      const ev = SOUND_EVENTS.find(function (x) { return x.key === key; });
+      if (ev && ev.kind === "warn") state.draft.sounds[key].sound = id;
+      else state.draft.sounds[key] = id;
+      playSound(id);
+      const group = t.closest(".sound-picks");
+      if (group) {
+        group.querySelectorAll(".sound-chip").forEach(function (chip) {
+          chip.classList.toggle("on", chip.getAttribute("data-id") === id);
+        });
+      }
+      return;
+    }
+    if (action === "phase-toggle-warn") {
+      if (!state.overlay || state.overlay.type !== "phase" || !state.draft) return;
+      const key = t.getAttribute("data-warn");
+      if (!state.draft.sounds[key]) return;
+      state.draft.sounds[key].enabled = !state.draft.sounds[key].enabled;
+      const on = state.draft.sounds[key].enabled;
+      t.classList.toggle("on", on);
+      t.setAttribute("aria-checked", on ? "true" : "false");
+      const body = document.getElementById("phase-warn-body");
+      if (body) body.classList.toggle("hidden", !on);
+      return;
+    }
+    if (action === "phase-warn-chip") {
+      if (!state.overlay || state.overlay.type !== "phase" || !state.draft) return;
+      const key = phaseWarnKey(state.overlay.phase);
+      const n = Number(t.getAttribute("data-sec"));
+      state.draft.sounds[key].atSec = n;
+      const row = t.closest(".chip-row");
+      if (row) {
+        row.querySelectorAll(".chip").forEach(function (chip) {
+          chip.classList.toggle("on", Number(chip.getAttribute("data-sec")) === n);
+        });
+      }
+      const input = document.getElementById("warn-custom-sec");
+      if (input) input.value = String(n);
+      return;
+    }
+    if (action === "phase-warn-custom") {
+      if (!state.overlay || state.overlay.type !== "phase" || !state.draft) return;
+      const input = document.getElementById("warn-custom-sec");
+      const n = Math.max(1, Math.min(599, Math.round(Number(input && input.value) || 1)));
+      const key = phaseWarnKey(state.overlay.phase);
+      state.draft.sounds[key].atSec = n;
+      if (input) input.value = String(n);
+      const row = document.querySelector(".phase-sheet .chip-row");
+      if (row) {
+        row.querySelectorAll(".chip").forEach(function (chip) {
+          chip.classList.toggle("on", Number(chip.getAttribute("data-sec")) === n);
+        });
+      }
+      return;
+    }
+    if (action === "phase-warn-mode") {
+      if (!state.overlay || state.overlay.type !== "phase" || !state.draft) return;
+      const mode = t.getAttribute("data-mode") === "ticks" ? "ticks" : "once";
+      const key = phaseWarnKey(state.overlay.phase);
+      state.draft.sounds[key].mode = mode;
+      const row = t.closest(".mode-row");
+      if (row) {
+        row.querySelectorAll(".chip").forEach(function (chip) {
+          chip.classList.toggle("on", chip.getAttribute("data-mode") === mode);
+        });
+      }
+      return;
+    }
+    if (action === "phase-work-show") {
+      if (!state.overlay || state.overlay.type !== "phase" || !state.draft) return;
+      syncPhasePanel();
+      const mode = t.getAttribute("data-mode");
+      state.draft.display.workUseTitle = mode === "title";
+      const sheet = document.querySelector(".phase-sheet .sheet-scroll");
+      const top = sheet ? sheet.scrollTop : 0;
+      renderOverlay();
+      const sheet2 = document.querySelector(".phase-sheet .sheet-scroll");
+      if (sheet2) sheet2.scrollTop = top;
+      return;
+    }
     if (action === "preview-sound") {
       playSound(t.getAttribute("data-sound"));
       return;
@@ -2257,8 +2692,19 @@ input:focus { border-color: var(--line-strong); }
   }
 
   document.addEventListener("input", function (e) {
-    if (e.target && e.target.id === "title-input" && state.draft) {
+    if (!e.target) return;
+    if (e.target.id === "title-input" && state.draft) {
       state.draft.title = e.target.value;
+    }
+    if (state.overlay && state.overlay.type === "phase" && state.draft) {
+      if (e.target.id === "phase-display-work" || e.target.id === "phase-display-rest" || e.target.id === "phase-display-ready" || e.target.id === "phase-min" || e.target.id === "phase-sec" || e.target.id === "warn-custom-sec") {
+        syncPhasePanel();
+        if (e.target.id === "phase-min" || e.target.id === "phase-sec") {
+          const field = phaseField(state.overlay.phase);
+          const tv = document.getElementById("phase-time");
+          if (tv) tv.textContent = formatMs(state.draft[field] || 0);
+        }
+      }
     }
   });
   document.addEventListener("click", onClick);
@@ -2288,6 +2734,8 @@ input:focus { border-color: var(--line-strong); }
     saveStore: saveStore,
     makePreset: makePreset,
     normalizeSounds: normalizeSounds,
+    normalizeDisplay: normalizeDisplay,
+    displayLabel: displayLabel,
     clampWarnAtSec: clampWarnAtSec,
     events: function () { return state.events || []; },
     clearEvents: function () { state.events = []; },
