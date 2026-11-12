@@ -615,11 +615,24 @@ input:focus { border-color: var(--line-strong); }
   to { transform: none; opacity: 1; }
 }
 .sheet .grab {
+  width: 100%;
+  height: auto;
+  min-height: 24px;
+  background: transparent;
+  margin: 0 auto 4px;
+  padding: 10px 0 12px;
+  position: relative;
+  touch-action: none;
+  cursor: grab;
+}
+.sheet .grab::before {
+  content: "";
+  display: block;
   width: 36px;
   height: 4px;
   border-radius: 2px;
   background: rgba(255,255,255,0.18);
-  margin: 4px auto 12px;
+  margin: 0 auto;
 }
 .sheet h3 { margin: 0 16px 12px; font-size: 18px; letter-spacing: -0.02em; }
 .sheet-item, .sheet-btn {
@@ -719,6 +732,7 @@ input:focus { border-color: var(--line-strong); }
   align-items: stretch;
   gap: 0;
   padding: 18px 16px 16px;
+  cursor: pointer;
 }
 .preset-card.simple .card-top {
   display: flex;
@@ -735,8 +749,8 @@ input:focus { border-color: var(--line-strong); }
   padding: 8px 4px 8px 12px;
   min-height: 44px;
   flex-shrink: 0;
+  pointer-events: none;
 }
-.edit-link:active { color: var(--text); }
 .start-btn {
   margin-top: 16px;
   width: 100%;
@@ -833,6 +847,10 @@ input:focus { border-color: var(--line-strong); }
   border-top: 1px solid var(--line);
 }
 .sheet-section { margin: 0 0 16px; }
+.phase-sheet .label,
+.phase-sheet .label-row .label {
+  color: #FFD60A;
+}
 .label-row {
   display: flex;
   align-items: center;
@@ -841,6 +859,9 @@ input:focus { border-color: var(--line-strong); }
   margin-bottom: 8px;
 }
 .label-row .label { margin: 0; }
+.sheet.dragging {
+  transition: none !important;
+}
 .sound-picks {
   display: flex;
   flex-wrap: wrap;
@@ -1176,15 +1197,161 @@ input:focus { border-color: var(--line-strong); }
   }
 
   // ---------- audio (synthesized; upload hook reserved) ----------
-  const audio = { ctx: null };
+  const audio = { ctx: null, silentEl: null, urls: {}, rendering: false, htmlEl: null };
+
+  function setPlaybackSession() {
+    try {
+      if (navigator.audioSession && navigator.audioSession.type !== "playback") {
+        navigator.audioSession.type = "playback";
+      }
+    } catch (e) {}
+  }
+
+  function makeSilentWavUri(seconds) {
+    const sr = 8000;
+    const n = Math.max(8, Math.floor(sr * (seconds || 0.25)));
+    const buf = new ArrayBuffer(44 + n * 2);
+    const v = new DataView(buf);
+    function wstr(o, s) { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); }
+    wstr(0, "RIFF");
+    v.setUint32(4, 36 + n * 2, true);
+    wstr(8, "WAVE");
+    wstr(12, "fmt ");
+    v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true);
+    v.setUint16(22, 1, true);
+    v.setUint32(24, sr, true);
+    v.setUint32(28, sr * 2, true);
+    v.setUint16(32, 2, true);
+    v.setUint16(34, 16, true);
+    wstr(36, "data");
+    v.setUint32(40, n * 2, true);
+    const bytes = new Uint8Array(buf);
+    let bin = "";
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return "data:audio/wav;base64," + btoa(bin);
+  }
+
+  function encodeWav(audioBuffer) {
+    const numCh = audioBuffer.numberOfChannels;
+    const sr = audioBuffer.sampleRate;
+    const len = audioBuffer.length;
+    const buf = new ArrayBuffer(44 + len * numCh * 2);
+    const v = new DataView(buf);
+    function wstr(o, s) { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); }
+    wstr(0, "RIFF");
+    v.setUint32(4, 36 + len * numCh * 2, true);
+    wstr(8, "WAVE");
+    wstr(12, "fmt ");
+    v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true);
+    v.setUint16(22, numCh, true);
+    v.setUint32(24, sr, true);
+    v.setUint32(28, sr * numCh * 2, true);
+    v.setUint16(32, numCh * 2, true);
+    v.setUint16(34, 16, true);
+    wstr(36, "data");
+    v.setUint32(40, len * numCh * 2, true);
+    const chans = [];
+    for (let c = 0; c < numCh; c++) chans.push(audioBuffer.getChannelData(c));
+    let o = 44;
+    for (let i = 0; i < len; i++) {
+      for (let c = 0; c < numCh; c++) {
+        let s = Math.max(-1, Math.min(1, chans[c][i]));
+        v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+        o += 2;
+      }
+    }
+    return new Blob([buf], { type: "audio/wav" });
+  }
+
+  function startSilentLoop() {
+    try {
+      if (!audio.silentEl) {
+        const el = document.createElement("audio");
+        el.setAttribute("playsinline", "true");
+        el.setAttribute("webkit-playsinline", "true");
+        el.setAttribute("x-webkit-airplay", "deny");
+        el.loop = true;
+        el.preload = "auto";
+        el.volume = 0;
+        el.src = makeSilentWavUri(0.25);
+        el.style.display = "none";
+        document.body.appendChild(el);
+        audio.silentEl = el;
+      }
+      const p = audio.silentEl.play();
+      if (p && p.catch) p.catch(function () {});
+    } catch (e) {}
+  }
 
   function unlockAudio() {
+    setPlaybackSession();
+    startSilentLoop();
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return;
-      if (!audio.ctx) audio.ctx = new AC();
-      if (audio.ctx.state === "suspended") audio.ctx.resume();
+      if (AC) {
+        if (!audio.ctx) audio.ctx = new AC();
+        if (audio.ctx.state === "suspended") audio.ctx.resume();
+      }
     } catch (e) {}
+    prerenderSounds();
+  }
+
+  function prerenderSounds() {
+    if (audio.rendering) return;
+    const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!Offline) return;
+    audio.rendering = true;
+    const dur = {
+      bell: 2.1,
+      "double-bell": 2.5,
+      "triple-bell": 2.9,
+      "short-buzzer": 0.45,
+      "long-buzzer": 1.15,
+      "warning-buzz": 0.85,
+      tick: 0.25
+    };
+    const ids = SOUND_LIBRARY.map(function (s) { return s.id; });
+    function next(i) {
+      if (i >= ids.length) return;
+      const id = ids[i];
+      if (audio.urls[id]) { next(i + 1); return; }
+      try {
+        const seconds = dur[id] || 2;
+        const sr = 44100;
+        const ctx = new Offline(1, Math.ceil(sr * seconds), sr);
+        renderSynth(id, ctx, 0);
+        const done = ctx.startRendering();
+        if (done && done.then) {
+          done.then(function (buf) {
+            audio.urls[id] = URL.createObjectURL(encodeWav(buf));
+            next(i + 1);
+          }).catch(function () { next(i + 1); });
+        } else {
+          next(i + 1);
+        }
+      } catch (e) { next(i + 1); }
+    }
+    next(0);
+  }
+
+  function playHtmlSound(id) {
+    const url = audio.urls[id];
+    if (!url) return Promise.resolve(false);
+    try {
+      const el = new Audio(url);
+      el.setAttribute("playsinline", "true");
+      el.setAttribute("webkit-playsinline", "true");
+      el.playsInline = true;
+      const p = el.play();
+      if (p && p.then) {
+        return p.then(function () { return true; }).catch(function () { return false; });
+      }
+      return Promise.resolve(true);
+    } catch (e) {
+      return Promise.resolve(false);
+    }
   }
 
   function playBell(ctx, when, gain) {
@@ -1298,10 +1465,7 @@ input:focus { border-color: var(--line-strong); }
     osc.stop(when + 0.11);
   }
 
-  function playSynth(id) {
-    if (!audio.ctx) return;
-    const ctx = audio.ctx;
-    const when = ctx.currentTime + 0.01;
+  function renderSynth(id, ctx, when) {
     switch (id) {
       case "bell":
         playBell(ctx, when);
@@ -1332,12 +1496,43 @@ input:focus { border-color: var(--line-strong); }
     }
   }
 
+  function playSynth(id) {
+    if (!audio.ctx) return false;
+    try {
+      renderSynth(id, audio.ctx, audio.ctx.currentTime + 0.01);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   function playSound(id) {
     unlockAudio();
     if (!id || id === "none") return;
     // Reserved for uploaded files stored in IndexedDB:
     // if (id.indexOf("custom:") === 0) { playCustomSound(id); return; }
-    playSynth(id);
+    function fire(via) {
+      logEvent({ type: "play", sound: id, via: via });
+    }
+    function viaWeb() {
+      const ok = playSynth(id);
+      if (ok) fire("webaudio");
+    }
+    const ctx = audio.ctx;
+    const start = function () {
+      // Prefer a single output: HTML audio when a pre-rendered WAV is ready
+      // (more reliable with the iOS silent switch after the playback-category unlock);
+      // otherwise Web Audio. Never play both, or sounds would double on desktop.
+      playHtmlSound(id).then(function (ok) {
+        if (ok) fire("html");
+        else viaWeb();
+      });
+    };
+    if (ctx && ctx.state === "suspended") {
+      ctx.resume().then(start).catch(start);
+    } else {
+      start();
+    }
   }
 
   // ---------- state ----------
@@ -1801,6 +1996,102 @@ input:focus { border-color: var(--line-strong); }
     );
   }
 
+  function bindSheetDismiss(root) {
+    const overlay = root.querySelector(".overlay:not(.center)");
+    if (!overlay) return;
+    const sheet = overlay.querySelector(".sheet");
+    if (!sheet) return;
+    const scroll = sheet.querySelector(".sheet-scroll") || sheet;
+    const grab = sheet.querySelector(".grab");
+    let drag = null;
+
+    function onDown(e) {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      if (e.target && e.target.closest && e.target.closest("input, textarea, select")) return;
+      const onGrab = !!(grab && (e.target === grab || grab.contains(e.target)));
+      const atTop = !scroll || scroll.scrollTop <= 1;
+      drag = {
+        id: e.pointerId,
+        startY: e.clientY,
+        startX: e.clientX,
+        lastY: e.clientY,
+        lastT: Date.now(),
+        vy: 0,
+        y: 0,
+        dragging: onGrab,
+        canStart: onGrab || atTop,
+        onGrab: onGrab
+      };
+      if (onGrab) {
+        sheet.classList.add("dragging");
+        sheet.style.transition = "none";
+        try { sheet.setPointerCapture(e.pointerId); } catch (err) {}
+      }
+    }
+
+    function onMove(e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      const now = Date.now();
+      const dy = e.clientY - drag.startY;
+      const dx = e.clientX - drag.startX;
+      const dt = Math.max(1, now - drag.lastT);
+      drag.vy = (e.clientY - drag.lastY) / dt;
+      drag.lastY = e.clientY;
+      drag.lastT = now;
+
+      if (!drag.dragging) {
+        if (!drag.canStart) return;
+        if (dy < -10) { drag.canStart = false; return; }
+        if (dy > 10 && Math.abs(dy) > Math.abs(dx) * 1.15) {
+          if (!drag.onGrab && scroll && scroll.scrollTop > 1) { drag.canStart = false; return; }
+          drag.dragging = true;
+          sheet.classList.add("dragging");
+          sheet.style.transition = "none";
+          try { sheet.setPointerCapture(e.pointerId); } catch (err) {}
+        } else {
+          return;
+        }
+      }
+
+      if (e.cancelable) e.preventDefault();
+      const y = Math.max(0, dy);
+      drag.y = y;
+      sheet.style.transform = "translateY(" + y + "px)";
+    }
+
+    function finish(e) {
+      if (!drag || (e && e.pointerId !== drag.id)) return;
+      const d = drag;
+      drag = null;
+      sheet.classList.remove("dragging");
+      if (!d.dragging) return;
+      if (d.y > 6) {
+        const swallow = function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          sheet.removeEventListener("click", swallow, true);
+        };
+        sheet.addEventListener("click", swallow, true);
+        setTimeout(function () { sheet.removeEventListener("click", swallow, true); }, 400);
+      }
+      const tall = sheet.getBoundingClientRect().height || 480;
+      const close = d.y > 120 || d.y > tall * 0.22 || (d.vy > 0.65 && d.y > 28);
+      if (close) {
+        sheet.style.transition = "transform 0.2s ease";
+        sheet.style.transform = "translateY(110%)";
+        setTimeout(function () { closeOverlay(); }, 200);
+      } else {
+        sheet.style.transition = "transform 0.25s ease";
+        sheet.style.transform = "translateY(0)";
+      }
+    }
+
+    sheet.addEventListener("pointerdown", onDown);
+    sheet.addEventListener("pointermove", onMove, { passive: false });
+    sheet.addEventListener("pointerup", finish);
+    sheet.addEventListener("pointercancel", finish);
+  }
+
   function renderOverlay() {
     let root = document.getElementById("overlay-root");
     if (!root) {
@@ -1831,6 +2122,7 @@ input:focus { border-color: var(--line-strong); }
     }
     if (o.type === "phase") {
       root.innerHTML = renderPhaseSheet();
+      bindSheetDismiss(root);
       return;
     }
     if (o.type === "sound") {
@@ -1852,6 +2144,7 @@ input:focus { border-color: var(--line-strong); }
             '<button type="button" class="sheet-cancel" data-action="overlay-cancel">Cancel</button>' +
           "</div>" +
         "</div>";
+      bindSheetDismiss(root);
       return;
     }
     if (o.type === "warn") {
@@ -1876,6 +2169,7 @@ input:focus { border-color: var(--line-strong); }
             '<button type="button" class="solid-btn wide" data-action="overlay-cancel">Done</button>' +
           "</div>" +
         "</div>";
+      bindSheetDismiss(root);
       return;
     }
     if (o.type === "time") {
@@ -1921,13 +2215,13 @@ input:focus { border-color: var(--line-strong); }
       const n = p.rounds;
       const roundsLabel = n + (n === 1 ? " round" : " rounds");
       return (
-        '<article class="preset-card simple" data-id="' + p.id + '">' +
+        '<article class="preset-card simple" data-action="edit" data-id="' + p.id + '" role="button" tabindex="0" aria-label="' + escapeHtml("Edit " + p.title) + '">' +
           '<div class="card-top">' +
             "<div>" +
               '<div class="name">' + escapeHtml(p.title) + "</div>" +
               '<div class="meta">' + roundsLabel + " · <strong>" + formatMs(p.workMs) + "</strong> work · <strong>" + formatMs(p.restMs) + "</strong> rest</div>" +
             "</div>" +
-            '<button type="button" class="edit-link" data-action="edit" data-id="' + p.id + '">Edit</button>' +
+            '<span class="edit-link">Edit</span>' +
           "</div>" +
           '<button type="button" class="start-btn" data-action="start" data-id="' + p.id + '">Start</button>' +
         "</article>"
@@ -2345,6 +2639,7 @@ input:focus { border-color: var(--line-strong); }
       return;
     }
     if (action === "start") {
+      e.stopPropagation();
       const p = findPreset(t.getAttribute("data-id"));
       if (p) startRun(p);
       return;
