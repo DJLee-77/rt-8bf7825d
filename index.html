@@ -1,0 +1,2006 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+  <meta name="theme-color" content="#070708">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Round Timer">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="description" content="Simple interval and boxing round timer">
+  <title>Round Timer</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+  <style>
+/* Round Timer — self-contained, no external fonts or CDNs */
+:root {
+  --bg: #070708;
+  --bg-elev: #101012;
+  --bg-card: #16161a;
+  --bg-card-2: #1c1c21;
+  --bg-hover: #222228;
+  --line: rgba(255, 255, 255, 0.09);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --text: #f5f5f7;
+  --muted: #8e8e93;
+  --faint: #636366;
+  --red: #ff3b30;
+  --red-soft: rgba(255, 59, 48, 0.16);
+  --blue: #64d2ff;
+  --blue-soft: rgba(100, 210, 255, 0.16);
+  --amber: #ffd60a;
+  --amber-soft: rgba(255, 214, 10, 0.14);
+  --green: #30d158;
+  --green-soft: rgba(48, 209, 88, 0.16);
+  --btn: #2c2c31;
+  --shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bot: env(safe-area-inset-bottom, 0px);
+  --phase: var(--red);
+  --radius: 18px;
+  --tap: 48px;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  min-height: 100%;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+button, input, select { font: inherit; color: inherit; }
+button {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+input {
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  font-size: 16px; /* prevent iOS zoom */
+  width: 100%;
+  outline: none;
+  color: var(--text);
+}
+input:focus { border-color: var(--line-strong); }
+
+#app {
+  height: 100dvh;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ===== Shared chrome ===== */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: calc(10px + var(--safe-top)) 16px 12px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+}
+.topbar h1 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.topbar .title-block { min-width: 0; flex: 1; }
+.topbar .title-block .sub {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.icon-btn {
+  width: var(--tap);
+  height: var(--tap);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--bg-card);
+  border: 1px solid var(--line);
+  color: var(--text);
+  flex-shrink: 0;
+}
+.icon-btn:active { transform: scale(0.96); background: var(--bg-hover); }
+.icon-btn.primary {
+  background: var(--red);
+  border-color: transparent;
+  color: #fff;
+}
+.icon-btn.primary:active { filter: brightness(0.92); }
+.icon-btn svg { width: 22px; height: 22px; display: block; }
+.topbar-actions { display: flex; gap: 8px; }
+
+.scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 16px calc(24px + var(--safe-bot));
+}
+
+/* ===== List ===== */
+.preset-list { display: flex; flex-direction: column; gap: 12px; }
+.preset-card {
+  background: var(--bg-card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 16px 14px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto auto;
+  gap: 0 12px;
+  text-align: left;
+  width: 100%;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset;
+}
+.preset-card:active { background: var(--bg-card-2); }
+.preset-card .name {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  grid-column: 1;
+  grid-row: 1;
+  line-height: 1.15;
+}
+.preset-card .meta {
+  grid-column: 1;
+  grid-row: 2;
+  color: var(--muted);
+  font-size: 14px;
+  margin-top: 6px;
+  line-height: 1.4;
+}
+.preset-card .meta strong { color: var(--text); font-weight: 600; }
+.preset-card .total {
+  grid-column: 1;
+  grid-row: 3;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--faint);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.play-btn {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  align-self: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--red);
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+.play-btn:active { transform: scale(0.95); filter: brightness(0.92); }
+.play-btn svg { width: 24px; height: 24px; margin-left: 2px; }
+.card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.empty {
+  text-align: center;
+  padding: 64px 24px;
+  color: var(--muted);
+}
+.empty h2 { color: var(--text); margin: 0 0 8px; font-size: 22px; letter-spacing: -0.02em; }
+.empty p { margin: 0 0 24px; line-height: 1.45; }
+
+.footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+  padding-bottom: 8px;
+}
+.ghost-btn, .text-btn, .solid-btn, .danger-btn {
+  min-height: var(--tap);
+  padding: 0 16px;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.ghost-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--line);
+  color: var(--text);
+  flex: 1;
+}
+.ghost-btn:active, .solid-btn:active, .danger-btn:active { transform: scale(0.98); }
+.solid-btn { background: var(--red); color: #fff; min-width: 88px; }
+.text-btn { color: var(--muted); font-weight: 600; font-size: 15px; padding: 0 10px; min-height: var(--tap); }
+.text-btn:active { color: var(--text); }
+.danger-btn { background: var(--red-soft); color: #ff6b63; }
+.wide { width: 100%; }
+
+/* ===== Editor ===== */
+.section {
+  background: var(--bg-card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.section h2, .label {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.hint { margin: 8px 0 0; font-size: 13px; color: var(--faint); line-height: 1.4; }
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.step-btn {
+  min-width: 52px;
+  height: 48px;
+  padding: 0 8px;
+  border-radius: 12px;
+  background: var(--btn);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+.step-btn:active { background: var(--bg-hover); }
+.step-value, .time-value {
+  flex: 1;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  min-height: 48px;
+  display: grid;
+  place-items: center;
+  color: var(--text);
+  border-radius: 12px;
+}
+.time-value { cursor: pointer; }
+.time-value:active { background: var(--bg-hover); }
+
+.round-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 12px 10px;
+  margin-top: 10px;
+}
+.round-card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.round-card header .rn {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.round-card.custom header .rn { color: var(--amber); }
+.round-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.round-row .rk {
+  width: 44px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.round-row .step-btn { min-width: 46px; height: 42px; }
+.round-row .time-value { font-size: 20px; min-height: 42px; }
+.reset-link { color: var(--blue); font-size: 13px; font-weight: 600; padding: 6px 8px; min-height: 36px; }
+
+.sound-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.sound-row:first-of-type { border-top: 0; padding-top: 0; }
+.sound-row .info { flex: 1; min-width: 0; }
+.sound-row .info .k { font-size: 15px; font-weight: 600; }
+.sound-row .info .v { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.mini-btn {
+  height: 44px;
+  min-width: 44px;
+  padding: 0 12px;
+  border-radius: 12px;
+  background: var(--btn);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+}
+.mini-btn:active { background: var(--bg-hover); }
+.mini-btn.play { width: 44px; padding: 0; display: grid; place-items: center; }
+
+.edit-footer {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+  margin-bottom: 12px;
+}
+
+/* ===== Run ===== */
+#view-run {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+#view-run::before {
+  content: "";
+  position: absolute;
+  inset: -20% -10% auto -10%;
+  height: 70%;
+  background: radial-gradient(ellipse at 50% 0%, var(--glow, rgba(255,59,48,0.22)), transparent 65%);
+  pointer-events: none;
+  transition: background 0.4s ease;
+}
+#view-run[data-phase="work"] { --phase: var(--red); --glow: rgba(255,59,48,0.28); }
+#view-run[data-phase="rest"] { --phase: var(--blue); --glow: rgba(100,210,255,0.22); }
+#view-run[data-phase="ready"] { --phase: var(--amber); --glow: rgba(255,214,10,0.20); }
+#view-run[data-phase="done"] { --phase: var(--green); --glow: rgba(48,209,88,0.22); }
+
+.run-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+  padding: 0 16px 8px;
+  gap: 8px;
+}
+.round-chip {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.ring-wrap {
+  position: relative;
+  width: min(78vw, 340px);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+}
+.ring-wrap svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.ring-wrap .track { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 7; }
+.ring-wrap .prog {
+  fill: none;
+  stroke: var(--phase);
+  stroke-width: 7;
+  stroke-linecap: round;
+  transition: stroke 0.3s ease;
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--phase) 70%, transparent));
+}
+.ring-center {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  padding-top: 6px;
+}
+.phase-label {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--phase);
+  margin-bottom: 4px;
+  transition: color 0.3s ease;
+}
+.big-time {
+  font-size: clamp(64px, 22vw, 108px);
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  line-height: 1;
+  color: var(--text);
+}
+.big-time.warn { color: var(--amber); animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.72; }
+}
+.done-msg { margin-top: 8px; color: var(--muted); font-size: 15px; }
+
+.run-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 8px 16px calc(22px + var(--safe-bot));
+  position: relative;
+  z-index: 1;
+}
+.ctrl {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  min-width: 72px;
+}
+.ctrl .hit {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: var(--bg-card);
+  border: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  color: var(--text);
+}
+.ctrl .hit:active { transform: scale(0.95); background: var(--bg-hover); }
+.ctrl.main .hit {
+  width: 78px;
+  height: 78px;
+  background: var(--phase);
+  border-color: transparent;
+  color: #0a0a0c;
+}
+#view-run[data-phase="work"] .ctrl.main .hit,
+#view-run[data-phase="ready"] .ctrl.main .hit { color: #fff; }
+#view-run[data-phase="ready"] .ctrl.main .hit { color: #0a0a0c; }
+.ctrl svg { width: 26px; height: 26px; display: block; }
+.ctrl.main svg { width: 32px; height: 32px; }
+
+/* ===== Sheets / modals ===== */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.overlay.center { align-items: center; padding: 24px; }
+.sheet {
+  width: 100%;
+  max-width: 520px;
+  background: #1c1c21;
+  border-radius: 22px 22px 0 0;
+  padding: 10px 16px calc(18px + var(--safe-bot));
+  box-shadow: var(--shadow);
+  animation: up 0.22s ease;
+}
+@keyframes up {
+  from { transform: translateY(16px); opacity: 0.6; }
+  to { transform: none; opacity: 1; }
+}
+.sheet .grab {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.18);
+  margin: 4px auto 12px;
+}
+.sheet h3 { margin: 0 16px 12px; font-size: 18px; letter-spacing: -0.02em; }
+.sheet-item, .sheet-btn {
+  width: 100%;
+  text-align: left;
+  min-height: 52px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.sheet-item:active, .sheet-btn:active { background: var(--bg-hover); }
+.sheet-item .left { display: flex; flex-direction: column; gap: 2px; }
+.sheet-item .sub { font-size: 13px; color: var(--muted); font-weight: 500; }
+.sheet-item .tick { color: var(--green); font-size: 18px; }
+.sheet-item.danger, .sheet-btn.danger { color: #ff6b63; }
+.sheet-cancel {
+  width: 100%;
+  min-height: 52px;
+  margin-top: 8px;
+  border-radius: 14px;
+  background: var(--btn);
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.dialog {
+  width: 100%;
+  max-width: 340px;
+  background: #1c1c21;
+  border-radius: 20px;
+  padding: 22px 20px 16px;
+  box-shadow: var(--shadow);
+}
+.dialog h3 { margin: 0 0 8px; font-size: 18px; }
+.dialog p { margin: 0 0 18px; color: var(--muted); font-size: 15px; line-height: 1.4; }
+.dialog .row { display: flex; gap: 8px; }
+.dialog .row button { flex: 1; }
+
+.time-edit .fields {
+  display: flex;
+  gap: 10px;
+  margin: 8px 0 16px;
+}
+.time-edit .field { flex: 1; text-align: center; }
+.time-edit .field span {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.time-edit input { text-align: center; font-size: 28px; font-weight: 700; padding: 12px 8px; }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + var(--safe-bot));
+  transform: translateX(-50%);
+  background: #2a2a30;
+  color: var(--text);
+  padding: 12px 18px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  z-index: 40;
+  box-shadow: var(--shadow);
+  animation: fade 2.2s ease forwards;
+  max-width: 90vw;
+}
+@keyframes fade {
+  0% { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  12% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.hidden { display: none !important; }
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  border: 0;
+}
+
+/* ===== Simplified list cards ===== */
+.preset-card.simple {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 18px 16px 16px;
+}
+.preset-card.simple .card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.preset-card.simple .name { font-size: 24px; }
+.preset-card.simple .meta { margin-top: 6px; }
+.edit-link {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+  padding: 8px 4px 8px 12px;
+  min-height: 44px;
+  flex-shrink: 0;
+}
+.edit-link:active { color: var(--text); }
+.start-btn {
+  margin-top: 16px;
+  width: 100%;
+  height: 54px;
+  border-radius: 14px;
+  background: var(--red);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.start-btn:active { transform: scale(0.98); filter: brightness(0.92); }
+
+.more-wrap { margin-top: 8px; }
+.more-toggle {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 4px;
+}
+.more-toggle:active { color: var(--text); }
+.more-toggle .chev { transition: transform 0.15s ease; }
+.more-toggle.open .chev { transform: rotate(180deg); }
+.more-body { display: none; padding-bottom: 8px; }
+.more-body.open { display: block; }
+
+/* Run: only pause + stop */
+.run-controls.simple { gap: 28px; }
+.run-controls.simple .ctrl.main .hit {
+  width: 84px;
+  height: 84px;
+}
+
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+(function () {
+  "use strict";
+
+  const STORAGE_KEY = "round-timer-v1";
+  const RING_R = 88;
+  const RING_C = 2 * Math.PI * RING_R;
+
+  const SOUND_LIBRARY = [
+    { id: "bell", name: "Boxing Bell" },
+    { id: "double-bell", name: "Double Bell" },
+    { id: "triple-bell", name: "Triple Bell" },
+    { id: "short-buzzer", name: "Short Buzzer" },
+    { id: "long-buzzer", name: "Long Buzzer" },
+    { id: "warning-buzz", name: "Warning Buzz" }
+    // Future: user uploads can be appended as { id: "custom:<key>", name, kind: "file" }
+  ];
+
+  const DEFAULT_SOUNDS = {
+    workStart: "bell",
+    restStart: "double-bell",
+    warning: "warning-buzz",
+    finish: "triple-bell"
+  };
+
+  const SOUND_EVENTS = [
+    { key: "workStart", label: "Round start" },
+    { key: "restStart", label: "Rest start" },
+    { key: "warning", label: "Last 10 seconds" },
+    { key: "finish", label: "Finished" }
+  ];
+
+  // ---------- helpers ----------
+  function uid() {
+    return (crypto.randomUUID && crypto.randomUUID()) ||
+      ("p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
+  }
+
+  function makePreset(partial) {
+    partial = partial || {};
+    const base = {
+      id: uid(),
+      title: "New Timer",
+      rounds: 8,
+      workMs: 60000,
+      restMs: 30000,
+      warmupMs: 0,
+      roundOverrides: [],
+      sounds: Object.assign({}, DEFAULT_SOUNDS),
+      updatedAt: Date.now()
+    };
+    const sounds = Object.assign({}, DEFAULT_SOUNDS, partial.sounds || {});
+    return Object.assign(base, partial, { sounds: sounds });
+  }
+
+  function seedPresets() {
+    return [
+      makePreset({ title: "Boxing", rounds: 12, workMs: 120000, restMs: 30000, warmupMs: 0 }),
+      makePreset({ title: "Minute On/Off", rounds: 10, workMs: 60000, restMs: 60000, warmupMs: 0 })
+    ];
+  }
+
+  function loadStore() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return { presets: seedPresets(), seeded: true };
+      const data = JSON.parse(raw);
+      if (!Array.isArray(data.presets)) return { presets: seedPresets(), seeded: true };
+      return { presets: data.presets.map(function (p) { return makePreset(p); }), seeded: true };
+    } catch (e) {
+      return { presets: seedPresets(), seeded: true };
+    }
+  }
+
+  function saveStore() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        version: 1,
+        seeded: true,
+        presets: state.presets
+      }));
+    } catch (e) {}
+  }
+
+  function formatMs(ms) {
+    const total = Math.max(0, Math.ceil(ms / 1000));
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return m + ":" + String(s).padStart(2, "0");
+  }
+
+  function soundName(id) {
+    const s = SOUND_LIBRARY.find(function (x) { return x.id === id; });
+    return s ? s.name : "None";
+  }
+
+  function getRoundTimes(preset, index) {
+    const o = (preset.roundOverrides || []).find(function (x) { return x.index === index; });
+    return {
+      workMs: o && o.workMs != null ? o.workMs : preset.workMs,
+      restMs: o && o.restMs != null ? o.restMs : preset.restMs,
+      custom: !!o
+    };
+  }
+
+  function setOverride(preset, index, field, value) {
+    const list = (preset.roundOverrides || []).slice();
+    let o = list.find(function (x) { return x.index === index; });
+    if (!o) {
+      o = { index: index };
+      list.push(o);
+    }
+    o[field] = value;
+    const def = field === "workMs" ? preset.workMs : preset.restMs;
+    const other = field === "workMs" ? o.restMs : o.workMs;
+    const otherDef = field === "workMs" ? preset.restMs : preset.workMs;
+    if (o.workMs == null || o.workMs === preset.workMs) {
+      if (o.restMs == null || o.restMs === preset.restMs) {
+        preset.roundOverrides = list.filter(function (x) { return x.index !== index; });
+        return;
+      }
+    }
+    // keep even if one field matches default
+    if (o.workMs === preset.workMs && (o.restMs == null || o.restMs === preset.restMs)) {
+      preset.roundOverrides = list.filter(function (x) { return x.index !== index; });
+      return;
+    }
+    preset.roundOverrides = list;
+  }
+
+  function clearOverride(preset, index) {
+    preset.roundOverrides = (preset.roundOverrides || []).filter(function (x) { return x.index !== index; });
+  }
+
+  function totalDuration(preset) {
+    let t = preset.warmupMs || 0;
+    for (let i = 0; i < preset.rounds; i++) {
+      const r = getRoundTimes(preset, i);
+      t += r.workMs;
+      if (i < preset.rounds - 1 && r.restMs > 0) t += r.restMs;
+    }
+    return t;
+  }
+
+  function timelineFor(preset) {
+    const steps = [];
+    if (preset.warmupMs > 0) {
+      steps.push({ phase: "ready", round: 1, duration: preset.warmupMs, label: "GET READY" });
+    }
+    for (let i = 0; i < preset.rounds; i++) {
+      const r = getRoundTimes(preset, i);
+      steps.push({ phase: "work", round: i + 1, duration: r.workMs, label: "WORK" });
+      if (i < preset.rounds - 1 && r.restMs > 0) {
+        steps.push({ phase: "rest", round: i + 1, duration: r.restMs, label: "REST" });
+      }
+    }
+    return steps.filter(function (s) { return s.duration > 0; });
+  }
+
+  function clampTime(ms, minMs) {
+    const max = 99 * 60 * 1000 + 59 * 1000;
+    return Math.max(minMs, Math.min(max, ms));
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c];
+    });
+  }
+
+  function vibrate(pattern) {
+    try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) {}
+  }
+
+  // ---------- audio (synthesized; upload hook reserved) ----------
+  const audio = { ctx: null };
+
+  function unlockAudio() {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      if (!audio.ctx) audio.ctx = new AC();
+      if (audio.ctx.state === "suspended") audio.ctx.resume();
+    } catch (e) {}
+  }
+
+  function playBell(ctx, when, gain) {
+    gain = gain == null ? 0.85 : gain;
+    const freqs = [830, 1245, 1660, 2093, 2489, 3320];
+    const decays = [1.7, 1.35, 1.05, 0.85, 0.7, 0.4];
+    const gains = [0.5, 0.3, 0.18, 0.14, 0.24, 0.09];
+    const master = ctx.createGain();
+    master.gain.value = gain;
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 350;
+    const peak = ctx.createBiquadFilter();
+    peak.type = "peaking";
+    peak.frequency.value = 2500;
+    peak.Q.value = 2;
+    peak.gain.value = 6;
+    hp.connect(peak);
+    peak.connect(master);
+    master.connect(ctx.destination);
+
+    freqs.forEach(function (f, i) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(f, when);
+      osc.frequency.exponentialRampToValueAtTime(f * 0.985, when + 0.35);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, when);
+      g.gain.exponentialRampToValueAtTime(gains[i], when + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, when + decays[i]);
+      osc.connect(g);
+      g.connect(hp);
+      osc.start(when);
+      osc.stop(when + decays[i] + 0.05);
+    });
+
+    const noiseDur = 0.028;
+    const buffer = ctx.createBuffer(1, Math.max(1, Math.floor(ctx.sampleRate * noiseDur)), ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (data.length * 0.35));
+    }
+    const n = ctx.createBufferSource();
+    n.buffer = buffer;
+    const ng = ctx.createGain();
+    ng.gain.value = 0.32;
+    const nf = ctx.createBiquadFilter();
+    nf.type = "bandpass";
+    nf.frequency.value = 2800;
+    nf.Q.value = 1;
+    n.connect(nf);
+    nf.connect(ng);
+    ng.connect(hp);
+    n.start(when);
+  }
+
+  function playBuzzer(ctx, when, duration, opts) {
+    opts = opts || {};
+    const freq = opts.freq || 196;
+    const gain = opts.gain == null ? 0.22 : opts.gain;
+    const master = ctx.createGain();
+    master.gain.value = gain;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = opts.cutoff || 1400;
+    const osc = ctx.createOscillator();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(freq, when);
+    if (opts.drop) {
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.85, when + duration);
+    }
+    const osc2 = ctx.createOscillator();
+    osc2.type = "sawtooth";
+    osc2.frequency.setValueAtTime(freq * 1.49, when);
+    const g2 = ctx.createGain();
+    g2.gain.value = 0.35;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.exponentialRampToValueAtTime(1, when + 0.012);
+    g.gain.setValueAtTime(1, when + Math.max(0.02, duration - 0.04));
+    g.gain.exponentialRampToValueAtTime(0.0001, when + duration);
+    osc.connect(g);
+    osc2.connect(g2);
+    g2.connect(g);
+    g.connect(lp);
+    lp.connect(master);
+    master.connect(ctx.destination);
+    osc.start(when);
+    osc2.start(when);
+    osc.stop(when + duration + 0.02);
+    osc2.stop(when + duration + 0.02);
+  }
+
+  function playWarningBuzz(ctx, when) {
+    for (let i = 0; i < 3; i++) {
+      playBuzzer(ctx, when + i * 0.16, 0.09, { freq: 520, cutoff: 2200, gain: 0.18 });
+    }
+  }
+
+  function playSynth(id) {
+    if (!audio.ctx) return;
+    const ctx = audio.ctx;
+    const when = ctx.currentTime + 0.01;
+    switch (id) {
+      case "bell":
+        playBell(ctx, when);
+        break;
+      case "double-bell":
+        playBell(ctx, when);
+        playBell(ctx, when + 0.38);
+        break;
+      case "triple-bell":
+        playBell(ctx, when);
+        playBell(ctx, when + 0.36);
+        playBell(ctx, when + 0.72);
+        break;
+      case "short-buzzer":
+        playBuzzer(ctx, when, 0.22, { freq: 200 });
+        break;
+      case "long-buzzer":
+        playBuzzer(ctx, when, 0.85, { freq: 180, drop: true });
+        break;
+      case "warning-buzz":
+        playWarningBuzz(ctx, when);
+        break;
+      default:
+        break;
+    }
+  }
+
+  function playSound(id) {
+    unlockAudio();
+    if (!id || id === "none") return;
+    // Reserved for uploaded files stored in IndexedDB:
+    // if (id.indexOf("custom:") === 0) { playCustomSound(id); return; }
+    playSynth(id);
+  }
+
+  // ---------- state ----------
+  const stored = loadStore();
+  const state = {
+    view: "list",
+    presets: stored.presets,
+    draft: null,
+    draftIsNew: false,
+    moreEdit: false,
+    moreList: false,
+    moreRounds: false,
+    run: null,
+    overlay: null,
+    toast: null,
+    wakeLock: null,
+    loopInterval: null,
+    loopRaf: null
+  };
+
+  const app = document.getElementById("app");
+
+  // ---------- wake lock ----------
+  async function requestWake() {
+    try {
+      if (navigator.wakeLock) {
+        state.wakeLock = await navigator.wakeLock.request("screen");
+      }
+    } catch (e) {}
+  }
+
+  async function releaseWake() {
+    try {
+      if (state.wakeLock) {
+        await state.wakeLock.release();
+        state.wakeLock = null;
+      }
+    } catch (e) {
+      state.wakeLock = null;
+    }
+  }
+
+  // ---------- timer engine ----------
+  function findPreset(id) {
+    return state.presets.find(function (p) { return p.id === id; });
+  }
+
+  function playPhaseCue(step, isFinish) {
+    if (isFinish) {
+      playSound(state.run.sounds.finish);
+      vibrate([200, 80, 200, 80, 400]);
+      return;
+    }
+    if (!step) return;
+    if (step.phase === "work") {
+      playSound(state.run.sounds.workStart);
+      vibrate(200);
+    } else if (step.phase === "rest") {
+      playSound(state.run.sounds.restStart);
+      vibrate([120, 60, 120]);
+    }
+  }
+
+  function shouldWarn(step) {
+    return step && (step.phase === "work" || step.phase === "rest") && step.duration > 10000;
+  }
+
+  function startRun(preset) {
+    unlockAudio();
+    requestWake();
+    const steps = timelineFor(preset);
+    if (!steps.length) {
+      toast("This timer has no time in it.");
+      return;
+    }
+    state.run = {
+      presetId: preset.id,
+      title: preset.title,
+      sounds: Object.assign({}, preset.sounds),
+      steps: steps,
+      index: 0,
+      phaseStart: Date.now(),
+      paused: false,
+      pauseRemaining: null,
+      warned: false,
+      done: false,
+      startedAt: Date.now()
+    };
+    state.view = "run";
+    render();
+    playPhaseCue(steps[0], false);
+    startLoop();
+  }
+
+  function remainingMs() {
+    const run = state.run;
+    if (!run || run.done) return 0;
+    const step = run.steps[run.index];
+    if (!step) return 0;
+    if (run.paused) return run.pauseRemaining;
+    return Math.max(0, step.duration - (Date.now() - run.phaseStart));
+  }
+
+  function goToStep(index, overshoot) {
+    const run = state.run;
+    if (index >= run.steps.length) {
+      run.done = true;
+      run.index = run.steps.length;
+      run.warned = true;
+      stopLoop();
+      releaseWake();
+      return "done";
+    }
+    run.index = index;
+    run.phaseStart = Date.now() - (overshoot || 0);
+    run.warned = false;
+    run.paused = false;
+    run.pauseRemaining = null;
+    return "step";
+  }
+
+  function catchUp() {
+    const run = state.run;
+    if (!run || run.paused || run.done) return;
+    let skipped = 0;
+    let lastKind = "step";
+    while (!run.done && skipped < 400) {
+      const step = run.steps[run.index];
+      if (!step) break;
+      const rem = step.duration - (Date.now() - run.phaseStart);
+      if (rem > 0) {
+        if (shouldWarn(step) && rem <= 10000 && !run.warned) {
+          run.warned = true;
+          playSound(run.sounds.warning);
+          vibrate([80, 50, 80, 50, 80]);
+        }
+        break;
+      }
+      lastKind = goToStep(run.index + 1, -rem);
+      skipped++;
+    }
+    if (skipped) {
+      if (run.done) playPhaseCue(null, true);
+      else playPhaseCue(run.steps[run.index], false);
+      renderRunChrome();
+    }
+    updateRunUI();
+  }
+
+  function tick() {
+    if (!state.run || state.run.paused || state.run.done) return;
+    catchUp();
+  }
+
+  function startLoop() {
+    stopLoop();
+    state.loopInterval = setInterval(tick, 100);
+    function raf() {
+      tick();
+      if (state.run && !state.run.paused && !state.run.done) {
+        state.loopRaf = requestAnimationFrame(raf);
+      }
+    }
+    state.loopRaf = requestAnimationFrame(raf);
+  }
+
+  function stopLoop() {
+    if (state.loopInterval) {
+      clearInterval(state.loopInterval);
+      state.loopInterval = null;
+    }
+    if (state.loopRaf) {
+      cancelAnimationFrame(state.loopRaf);
+      state.loopRaf = null;
+    }
+  }
+
+  function pauseRun() {
+    const run = state.run;
+    if (!run || run.done || run.paused) return;
+    run.pauseRemaining = remainingMs();
+    run.paused = true;
+    stopLoop();
+    releaseWake();
+    renderRunChrome();
+    updateRunUI();
+  }
+
+  function resumeRun() {
+    const run = state.run;
+    if (!run || run.done || !run.paused) return;
+    const step = run.steps[run.index];
+    run.phaseStart = Date.now() - (step.duration - run.pauseRemaining);
+    run.paused = false;
+    run.pauseRemaining = null;
+    unlockAudio();
+    requestWake();
+    startLoop();
+    renderRunChrome();
+    updateRunUI();
+  }
+
+  function stopRun() {
+    stopLoop();
+    releaseWake();
+    state.run = null;
+    state.view = "list";
+    render();
+  }
+
+  function restartRun() {
+    const id = state.run && state.run.presetId;
+    const preset = id && findPreset(id);
+    stopLoop();
+    releaseWake();
+    if (preset) startRun(preset);
+    else stopRun();
+  }
+
+  // ---------- overlays ----------
+  function closeOverlay() {
+    state.overlay = null;
+    renderOverlay();
+  }
+
+  function toast(msg) {
+    state.toast = msg;
+    renderToast();
+    setTimeout(function () {
+      if (state.toast === msg) {
+        state.toast = null;
+        renderToast();
+      }
+    }, 2200);
+  }
+
+  function renderToast() {
+    let el = document.getElementById("toast");
+    if (!state.toast) {
+      if (el) el.remove();
+      return;
+    }
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "toast";
+      el.className = "toast";
+      document.body.appendChild(el);
+    }
+    el.className = "toast";
+    el.textContent = state.toast;
+  }
+
+  function renderOverlay() {
+    let root = document.getElementById("overlay-root");
+    if (!root) {
+      root = document.createElement("div");
+      root.id = "overlay-root";
+      document.body.appendChild(root);
+    }
+    const o = state.overlay;
+    if (!o) {
+      root.innerHTML = "";
+      return;
+    }
+    if (o.type === "confirm") {
+      root.innerHTML =
+        '<div class="overlay center" data-action="overlay-backdrop">' +
+          '<div class="dialog" role="dialog" aria-modal="true">' +
+            "<h3>" + escapeHtml(o.title) + "</h3>" +
+            "<p>" + escapeHtml(o.body || "") + "</p>" +
+            '<div class="row">' +
+              '<button type="button" class="ghost-btn" data-action="overlay-cancel">Cancel</button>' +
+              '<button type="button" class="' + (o.danger ? "danger-btn" : "solid-btn") + '" data-action="overlay-ok">' +
+                escapeHtml(o.okLabel || "OK") +
+              "</button>" +
+            "</div>" +
+          "</div>" +
+        "</div>";
+      return;
+    }
+    if (o.type === "sound") {
+      const items = SOUND_LIBRARY.map(function (s) {
+        const selected = s.id === o.current;
+        return (
+          '<button type="button" class="sheet-item" data-action="pick-sound" data-id="' + s.id + '">' +
+            '<span class="left"><span>' + escapeHtml(s.name) + "</span></span>" +
+            (selected ? '<span class="tick">✓</span>' : "") +
+          "</button>"
+        );
+      }).join("");
+      root.innerHTML =
+        '<div class="overlay" data-action="overlay-backdrop">' +
+          '<div class="sheet" role="dialog" aria-modal="true">' +
+            '<div class="grab"></div>' +
+            "<h3>" + escapeHtml(o.label) + "</h3>" +
+            items +
+            '<button type="button" class="sheet-cancel" data-action="overlay-cancel">Cancel</button>' +
+          "</div>" +
+        "</div>";
+      return;
+    }
+    if (o.type === "time") {
+      const total = Math.max(0, Math.round(o.ms / 1000));
+      const m = Math.floor(total / 60);
+      const s = total % 60;
+      root.innerHTML =
+        '<div class="overlay center" data-action="overlay-backdrop">' +
+          '<div class="dialog time-edit" role="dialog" aria-modal="true">' +
+            "<h3>Set time</h3>" +
+            '<div class="fields">' +
+              '<label class="field"><span>MIN</span><input id="te-min" type="number" inputmode="numeric" min="0" max="99" value="' + m + '"></label>' +
+              '<label class="field"><span>SEC</span><input id="te-sec" type="number" inputmode="numeric" min="0" max="59" value="' + s + '"></label>' +
+            "</div>" +
+            '<div class="row">' +
+              '<button type="button" class="ghost-btn" data-action="overlay-cancel">Cancel</button>' +
+              '<button type="button" class="solid-btn" data-action="time-apply">Set</button>' +
+            "</div>" +
+          "</div>" +
+        "</div>";
+      return;
+    }
+    root.innerHTML = "";
+  }
+
+  // ---------- render views ----------
+  function icons() {
+    return {
+      plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+      back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',
+      close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+      pause: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4.5" height="14" rx="1"/><rect x="13.5" y="5" width="4.5" height="14" rx="1"/></svg>',
+      play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5L8 5.5z"/></svg>',
+      chev: '<svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>',
+      preview: '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5.5v13l11-6.5L8 5.5z"/></svg>'
+    };
+  }
+
+  function renderList() {
+    const ic = icons();
+    const cards = state.presets.map(function (p) {
+      const n = p.rounds;
+      const roundsLabel = n + (n === 1 ? " round" : " rounds");
+      return (
+        '<article class="preset-card simple" data-id="' + p.id + '">' +
+          '<div class="card-top">' +
+            "<div>" +
+              '<div class="name">' + escapeHtml(p.title) + "</div>" +
+              '<div class="meta">' + roundsLabel + " · <strong>" + formatMs(p.workMs) + "</strong> work · <strong>" + formatMs(p.restMs) + "</strong> rest</div>" +
+            "</div>" +
+            '<button type="button" class="edit-link" data-action="edit" data-id="' + p.id + '">Edit</button>' +
+          "</div>" +
+          '<button type="button" class="start-btn" data-action="start" data-id="' + p.id + '">Start</button>' +
+        "</article>"
+      );
+    }).join("");
+
+    const empty = state.presets.length === 0
+      ? '<div class="empty"><h2>No timers yet</h2><p>Make one for boxing rounds, intervals, or any workout you repeat.</p>' +
+        '<button type="button" class="solid-btn" data-action="new">New timer</button></div>'
+      : '<div class="preset-list">' + cards + "</div>";
+
+    const moreOpen = state.moreList ? " open" : "";
+    return (
+      '<div class="topbar">' +
+        "<h1>Round Timer</h1>" +
+        '<button type="button" class="icon-btn primary" data-action="new" aria-label="New timer">' + ic.plus + "</button>" +
+      "</div>" +
+      '<div class="scroll">' +
+        empty +
+        '<div class="more-wrap">' +
+          '<button type="button" class="more-toggle' + moreOpen + '" data-action="toggle-list-more">More options ' + ic.chev + "</button>" +
+          '<div class="more-body' + moreOpen + '">' +
+            '<div class="footer-actions">' +
+              '<button type="button" class="ghost-btn" data-action="export">Export</button>' +
+              '<button type="button" class="ghost-btn" data-action="import">Import</button>' +
+            "</div>" +
+          "</div>" +
+        "</div>" +
+      "</div>" +
+      '<input id="import-file" class="sr-only" type="file" accept="application/json,.json">'
+    );
+  }
+
+  function stepper(field, valueText, minusDelta, plusDelta, minusLabel, plusLabel) {
+    return (
+      '<div class="stepper">' +
+        '<button type="button" class="step-btn" data-action="nudge" data-field="' + field + '" data-delta="' + minusDelta + '">' + minusLabel + "</button>" +
+        '<button type="button" class="time-value" data-action="edit-value" data-field="' + field + '">' + valueText + "</button>" +
+        '<button type="button" class="step-btn" data-action="nudge" data-field="' + field + '" data-delta="' + plusDelta + '">' + plusLabel + "</button>" +
+      "</div>"
+    );
+  }
+
+  function renderEditor() {
+    const ic = icons();
+    const d = state.draft;
+    const moreOpen = state.moreEdit ? " open" : "";
+    const soundRows = SOUND_EVENTS.map(function (ev) {
+      const id = d.sounds[ev.key];
+      return (
+        '<div class="sound-row">' +
+          '<div class="info"><div class="k">' + ev.label + '</div><div class="v">' + escapeHtml(soundName(id)) + "</div></div>" +
+          '<button type="button" class="mini-btn play" data-action="preview-sound" data-sound="' + id + '" aria-label="Preview">' + ic.preview + "</button>" +
+          '<button type="button" class="mini-btn" data-action="choose-sound" data-event="' + ev.key + '">Change</button>' +
+        "</div>"
+      );
+    }).join("");
+
+    let roundsHtml = "";
+    if (state.moreRounds || (d.roundOverrides && d.roundOverrides.length)) {
+      for (let i = 0; i < d.rounds; i++) {
+        const r = getRoundTimes(d, i);
+        const last = i === d.rounds - 1;
+        roundsHtml +=
+          '<div class="round-card' + (r.custom ? " custom" : "") + '">' +
+            "<header><span class=\"rn\">Round " + (i + 1) + (r.custom ? " · custom" : "") + "</span>" +
+            (r.custom ? '<button type="button" class="reset-link" data-action="reset-round" data-index="' + i + '">Reset</button>' : "") +
+            "</header>" +
+            '<div class="round-row"><span class="rk">Work</span>' +
+              '<button type="button" class="step-btn" data-action="nudge-round" data-index="' + i + '" data-field="workMs" data-delta="-5000">−5s</button>' +
+              '<button type="button" class="time-value" data-action="edit-round" data-index="' + i + '" data-field="workMs">' + formatMs(r.workMs) + "</button>" +
+              '<button type="button" class="step-btn" data-action="nudge-round" data-index="' + i + '" data-field="workMs" data-delta="5000">+5s</button>' +
+            "</div>" +
+            (last
+              ? '<div class="hint">No rest after the last round.</div>'
+              : '<div class="round-row"><span class="rk">Rest</span>' +
+                '<button type="button" class="step-btn" data-action="nudge-round" data-index="' + i + '" data-field="restMs" data-delta="-5000">−5s</button>' +
+                '<button type="button" class="time-value" data-action="edit-round" data-index="' + i + '" data-field="restMs">' + formatMs(r.restMs) + "</button>" +
+                '<button type="button" class="step-btn" data-action="nudge-round" data-index="' + i + '" data-field="restMs" data-delta="5000">+5s</button>' +
+              "</div>") +
+          "</div>";
+      }
+    }
+
+    return (
+      '<div class="topbar">' +
+        '<button type="button" class="icon-btn" data-action="cancel-edit" aria-label="Cancel">' + ic.back + "</button>" +
+        "<h1>" + (state.draftIsNew ? "New Timer" : "Edit Timer") + "</h1>" +
+        '<button type="button" class="text-btn" data-action="save-edit" style="color:#fff">Save</button>' +
+      "</div>" +
+      '<div class="scroll">' +
+        '<div class="section"><div class="label">Title</div>' +
+          '<input id="title-input" type="text" maxlength="48" value="' + escapeHtml(d.title) + '" placeholder="e.g. Boxing">' +
+        "</div>" +
+        '<div class="section"><div class="label">Rounds</div>' +
+          stepper("rounds", String(d.rounds), -1, 1, "−", "+") +
+        "</div>" +
+        '<div class="section"><div class="label">Work</div>' +
+          stepper("workMs", formatMs(d.workMs), -5000, 5000, "−5s", "+5s") +
+        "</div>" +
+        '<div class="section"><div class="label">Rest</div>' +
+          stepper("restMs", formatMs(d.restMs), -5000, 5000, "−5s", "+5s") +
+        "</div>" +
+        '<div class="section"><div class="label">Sounds</div>' + soundRows +
+          '<p class="hint">Bells and buzzers play from this phone. Built-in iPhone sounds can’t be used in a web app.</p>' +
+        "</div>" +
+        '<div class="more-wrap">' +
+          '<button type="button" class="more-toggle' + moreOpen + '" data-action="toggle-edit-more">More options ' + ic.chev + "</button>" +
+          '<div class="more-body' + moreOpen + '">' +
+            '<div class="section"><div class="label">Get ready</div>' +
+              stepper("warmupMs", formatMs(d.warmupMs || 0), -5000, 5000, "−5s", "+5s") +
+              '<p class="hint">Optional countdown before the first round. 0:00 means it starts right away.</p>' +
+            "</div>" +
+            '<div class="section"><div class="label">Per-round times</div>' +
+              '<button type="button" class="ghost-btn wide" data-action="toggle-rounds">' +
+                (state.moreRounds || (d.roundOverrides && d.roundOverrides.length) ? "Hide rounds" : "Edit individual rounds") +
+              "</button>" +
+              roundsHtml +
+            "</div>" +
+            (state.draftIsNew ? "" :
+              '<div class="edit-footer">' +
+                '<button type="button" class="ghost-btn" data-action="duplicate">Duplicate</button>' +
+                '<button type="button" class="danger-btn" data-action="delete">Delete</button>' +
+              "</div>") +
+          "</div>" +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  function currentRunStep() {
+    const run = state.run;
+    if (!run || run.done) return { phase: "done", round: run ? run.steps[run.steps.length - 1].round : 1, label: "COMPLETE", duration: 1 };
+    return run.steps[run.index];
+  }
+
+  function totalRounds(run) {
+    let max = 1;
+    (run.steps || []).forEach(function (s) { if (s.round > max) max = s.round; });
+    return max;
+  }
+
+  function renderRun() {
+    const ic = icons();
+    const run = state.run;
+    const step = currentRunStep();
+    const phase = run.done ? "done" : step.phase;
+    const rem = run.done ? 0 : remainingMs();
+    const dur = run.done ? 1 : step.duration;
+    const progress = run.done ? 0 : Math.max(0, Math.min(1, rem / dur));
+    const offset = RING_C * (1 - progress);
+    const warn = !run.done && !run.paused && rem <= 10000 && rem > 0 && (step.phase === "work" || step.phase === "rest") && step.duration > 10000;
+    const paused = run.paused;
+    const roundMax = totalRounds(run);
+    const roundNow = step.round;
+
+    return (
+      '<div id="view-run" data-phase="' + phase + '">' +
+        '<div class="topbar">' +
+          '<div class="title-block"><h1>' + escapeHtml(run.title) + "</h1></div>" +
+          '<button type="button" class="icon-btn" data-action="stop" aria-label="Stop">' + ic.close + "</button>" +
+        "</div>" +
+        '<div class="run-stage">' +
+          (run.done
+            ? '<div class="round-chip">ALL ROUNDS DONE</div>'
+            : '<div class="round-chip" id="run-round">ROUND ' + roundNow + " / " + roundMax + "</div>") +
+          '<div class="ring-wrap">' +
+            '<svg viewBox="0 0 200 200" aria-hidden="true">' +
+              '<circle class="track" cx="100" cy="100" r="' + RING_R + '"></circle>' +
+              '<circle class="prog" id="run-ring" cx="100" cy="100" r="' + RING_R + '" ' +
+                'stroke-dasharray="' + RING_C.toFixed(2) + '" stroke-dashoffset="' + offset.toFixed(2) + '"></circle>' +
+            "</svg>" +
+            '<div class="ring-center">' +
+              '<div class="phase-label" id="run-phase">' + (run.done ? "COMPLETE" : (paused ? "PAUSED" : step.label)) + "</div>" +
+              '<div class="big-time' + (warn ? " warn" : "") + '" id="run-time">' + (run.done ? "0:00" : formatMs(rem)) + "</div>" +
+            "</div>" +
+          "</div>" +
+        "</div>" +
+        '<div class="run-controls simple">' +
+          (run.done
+            ? '<button type="button" class="ctrl main" data-action="restart"><span class="hit">' + ic.play + "</span>Again</button>" +
+              '<button type="button" class="ctrl" data-action="stop"><span class="hit">' + ic.close + "</span>Done</button>"
+            : '<button type="button" class="ctrl main" data-action="' + (paused ? "resume" : "pause") + '">' +
+                '<span class="hit">' + (paused ? ic.play : ic.pause) + "</span>" + (paused ? "Resume" : "Pause") +
+              "</button>" +
+              '<button type="button" class="ctrl" data-action="stop"><span class="hit">' + ic.close + "</span>Stop</button>") +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  function renderRunChrome() {
+    // Re-render the run view when phase/pause/done changes (not every tick).
+    if (state.view !== "run") return;
+    app.innerHTML = renderRun();
+  }
+
+  function updateRunUI() {
+    if (state.view !== "run" || !state.run) return;
+    const run = state.run;
+    const timeEl = document.getElementById("run-time");
+    const ring = document.getElementById("run-ring");
+    const phaseEl = document.getElementById("run-phase");
+    if (!timeEl) return;
+    if (run.done) {
+      timeEl.textContent = "0:00";
+      timeEl.className = "big-time";
+      if (ring) ring.setAttribute("stroke-dashoffset", String(RING_C));
+      return;
+    }
+    const step = run.steps[run.index];
+    const rem = remainingMs();
+    const progress = Math.max(0, Math.min(1, rem / step.duration));
+    timeEl.textContent = formatMs(rem);
+    const warn = !run.paused && rem <= 10000 && rem > 0 && shouldWarn(step);
+    timeEl.className = "big-time" + (warn ? " warn" : "");
+    if (ring) ring.setAttribute("stroke-dashoffset", (RING_C * (1 - progress)).toFixed(2));
+    if (phaseEl && !run.paused) phaseEl.textContent = step.label;
+  }
+
+  function render() {
+    if (state.view === "edit") app.innerHTML = renderEditor();
+    else if (state.view === "run") app.innerHTML = renderRun();
+    else app.innerHTML = renderList();
+    renderOverlay();
+  }
+
+  // ---------- editor actions ----------
+  function readTitle() {
+    if (state.view !== "edit" || !state.draft) return;
+    const input = document.getElementById("title-input");
+    if (input) state.draft.title = input.value;
+  }
+
+  function nudgeField(field, delta) {
+    readTitle();
+    if (field === "rounds") {
+      state.draft.rounds = Math.max(1, Math.min(99, state.draft.rounds + delta));
+      state.draft.roundOverrides = (state.draft.roundOverrides || []).filter(function (o) {
+        return o.index < state.draft.rounds;
+      });
+    } else if (field === "workMs") {
+      state.draft.workMs = clampTime(state.draft.workMs + delta, 1000);
+    } else if (field === "restMs") {
+      state.draft.restMs = clampTime(state.draft.restMs + delta, 0);
+    } else if (field === "warmupMs") {
+      state.draft.warmupMs = clampTime((state.draft.warmupMs || 0) + delta, 0);
+    }
+    render();
+    focusTitleCaret();
+  }
+
+  function focusTitleCaret() {
+    const input = document.getElementById("title-input");
+    if (input && document.activeElement === input) {
+      // restored via render, so this won't happen; leave as-is
+    }
+  }
+
+  function applyTimeToField(field, ms, roundIndex) {
+    if (roundIndex != null) {
+      const min = field === "workMs" ? 1000 : 0;
+      const val = clampTime(ms, min);
+      const list = (state.draft.roundOverrides || []).slice();
+      let o = list.find(function (x) { return x.index === roundIndex; });
+      if (!o) {
+        o = { index: roundIndex };
+        list.push(o);
+      }
+      o[field] = val;
+      const rWork = o.workMs != null ? o.workMs : state.draft.workMs;
+      const rRest = o.restMs != null ? o.restMs : state.draft.restMs;
+      if (rWork === state.draft.workMs && rRest === state.draft.restMs) {
+        state.draft.roundOverrides = list.filter(function (x) { return x.index !== roundIndex; });
+      } else {
+        state.draft.roundOverrides = list;
+      }
+    } else {
+      if (field === "workMs") state.draft.workMs = clampTime(ms, 1000);
+      else if (field === "restMs") state.draft.restMs = clampTime(ms, 0);
+      else if (field === "warmupMs") state.draft.warmupMs = clampTime(ms, 0);
+    }
+  }
+
+  function openTimeEditor(field, currentMs, roundIndex) {
+    state.overlay = {
+      type: "time",
+      field: field,
+      ms: currentMs,
+      roundIndex: roundIndex
+    };
+    renderOverlay();
+    setTimeout(function () {
+      const el = document.getElementById("te-min");
+      if (el) el.focus();
+    }, 50);
+  }
+
+  function saveDraft() {
+    readTitle();
+    let title = (state.draft.title || "").trim();
+    if (!title) title = "Untitled";
+    state.draft.title = title;
+    state.draft.updatedAt = Date.now();
+    const existing = findPreset(state.draft.id);
+    if (existing) {
+      const i = state.presets.indexOf(existing);
+      state.presets[i] = makePreset(state.draft);
+    } else {
+      state.presets.unshift(makePreset(state.draft));
+    }
+    saveStore();
+    state.view = "list";
+    state.draft = null;
+    state.moreEdit = false;
+    state.moreRounds = false;
+    render();
+    toast("Saved");
+  }
+
+  function cancelEdit() {
+    state.view = "list";
+    state.draft = null;
+    state.moreEdit = false;
+    state.moreRounds = false;
+    render();
+  }
+
+  function openEditor(preset, isNew) {
+    state.draft = makePreset(JSON.parse(JSON.stringify(preset)));
+    state.draftIsNew = !!isNew;
+    state.moreEdit = false;
+    state.moreRounds = !!(preset.roundOverrides && preset.roundOverrides.length);
+    state.view = "edit";
+    render();
+    const input = document.getElementById("title-input");
+    if (input && isNew) {
+      input.focus();
+      input.select();
+    }
+  }
+
+  function confirmDialog(opts, onOk) {
+    state.overlay = {
+      type: "confirm",
+      title: opts.title,
+      body: opts.body,
+      okLabel: opts.okLabel,
+      danger: !!opts.danger,
+      onOk: onOk
+    };
+    renderOverlay();
+  }
+
+  // ---------- import / export ----------
+  function exportPresets() {
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      presets: state.presets
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "round-timers.json";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () {
+      URL.revokeObjectURL(a.href);
+      a.remove();
+    }, 500);
+    toast("Exported");
+  }
+
+  function importPresets(file) {
+    const reader = new FileReader();
+    reader.onload = function () {
+      try {
+        const data = JSON.parse(String(reader.result));
+        const list = Array.isArray(data) ? data : data.presets;
+        if (!Array.isArray(list) || !list.length) {
+          toast("No timers in that file.");
+          return;
+        }
+        let added = 0;
+        list.forEach(function (p) {
+          const copy = makePreset(p);
+          copy.id = uid();
+          copy.updatedAt = Date.now();
+          state.presets.push(copy);
+          added++;
+        });
+        saveStore();
+        render();
+        toast("Imported " + added + (added === 1 ? " timer" : " timers"));
+      } catch (e) {
+        toast("Couldn’t read that file.");
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // ---------- events ----------
+  function onClick(e) {
+    const t = e.target.closest("[data-action]");
+    if (!t) return;
+    const action = t.getAttribute("data-action");
+
+    if (action === "new") {
+      unlockAudio();
+      openEditor(makePreset({ title: "", rounds: 8, workMs: 60000, restMs: 30000 }), true);
+      return;
+    }
+    if (action === "start") {
+      const p = findPreset(t.getAttribute("data-id"));
+      if (p) startRun(p);
+      return;
+    }
+    if (action === "edit") {
+      const p = findPreset(t.getAttribute("data-id"));
+      if (p) openEditor(p, false);
+      return;
+    }
+    if (action === "cancel-edit") { cancelEdit(); return; }
+    if (action === "save-edit") { saveDraft(); return; }
+    if (action === "toggle-list-more") {
+      state.moreList = !state.moreList;
+      render();
+      return;
+    }
+    if (action === "toggle-edit-more") {
+      readTitle();
+      state.moreEdit = !state.moreEdit;
+      render();
+      return;
+    }
+    if (action === "toggle-rounds") {
+      readTitle();
+      state.moreRounds = !state.moreRounds;
+      if (state.moreRounds) state.moreEdit = true;
+      render();
+      return;
+    }
+    if (action === "nudge") {
+      nudgeField(t.getAttribute("data-field"), Number(t.getAttribute("data-delta")));
+      return;
+    }
+    if (action === "edit-value") {
+      readTitle();
+      const field = t.getAttribute("data-field");
+      if (field === "rounds") return;
+      openTimeEditor(field, state.draft[field] || 0, null);
+      return;
+    }
+    if (action === "nudge-round") {
+      readTitle();
+      const idx = Number(t.getAttribute("data-index"));
+      const field = t.getAttribute("data-field");
+      const delta = Number(t.getAttribute("data-delta"));
+      const cur = getRoundTimes(state.draft, idx);
+      applyTimeToField(field, cur[field] + delta, idx);
+      render();
+      return;
+    }
+    if (action === "edit-round") {
+      readTitle();
+      const idx = Number(t.getAttribute("data-index"));
+      const field = t.getAttribute("data-field");
+      const cur = getRoundTimes(state.draft, idx);
+      openTimeEditor(field, cur[field], idx);
+      return;
+    }
+    if (action === "reset-round") {
+      readTitle();
+      clearOverride(state.draft, Number(t.getAttribute("data-index")));
+      render();
+      return;
+    }
+    if (action === "preview-sound") {
+      playSound(t.getAttribute("data-sound"));
+      return;
+    }
+    if (action === "choose-sound") {
+      readTitle();
+      const key = t.getAttribute("data-event");
+      const ev = SOUND_EVENTS.find(function (x) { return x.key === key; });
+      state.overlay = {
+        type: "sound",
+        event: key,
+        label: ev ? ev.label : "Sound",
+        current: state.draft.sounds[key]
+      };
+      renderOverlay();
+      return;
+    }
+    if (action === "pick-sound") {
+      const id = t.getAttribute("data-id");
+      if (state.overlay && state.overlay.type === "sound" && state.draft) {
+        state.draft.sounds[state.overlay.event] = id;
+        playSound(id);
+      }
+      closeOverlay();
+      render();
+      return;
+    }
+    if (action === "duplicate") {
+      readTitle();
+      const copy = makePreset(JSON.parse(JSON.stringify(state.draft)));
+      copy.id = uid();
+      copy.title = (state.draft.title || "Timer") + " copy";
+      copy.updatedAt = Date.now();
+      state.presets.unshift(copy);
+      saveStore();
+      state.view = "list";
+      state.draft = null;
+      render();
+      toast("Duplicated");
+      return;
+    }
+    if (action === "delete") {
+      confirmDialog({
+        title: "Delete this timer?",
+        body: "This can’t be undone.",
+        okLabel: "Delete",
+        danger: true
+      }, function () {
+        state.presets = state.presets.filter(function (p) { return p.id !== state.draft.id; });
+        saveStore();
+        state.draft = null;
+        state.view = "list";
+        render();
+        toast("Deleted");
+      });
+      return;
+    }
+    if (action === "export") { exportPresets(); return; }
+    if (action === "import") {
+      const input = document.getElementById("import-file");
+      if (input) input.click();
+      return;
+    }
+    if (action === "pause") { pauseRun(); return; }
+    if (action === "resume") { resumeRun(); return; }
+    if (action === "stop") {
+      if (state.run && !state.run.done && !state.run.paused) pauseRun();
+      if (state.run && !state.run.done) {
+        confirmDialog({
+          title: "Stop timer?",
+          body: "You’ll go back to your list.",
+          okLabel: "Stop",
+          danger: true
+        }, function () { stopRun(); });
+      } else {
+        stopRun();
+      }
+      return;
+    }
+    if (action === "restart") { restartRun(); return; }
+    if (action === "overlay-backdrop") {
+      if (e.target !== t) return;
+      closeOverlay();
+      return;
+    }
+    if (action === "overlay-cancel") {
+      closeOverlay();
+      return;
+    }
+    if (action === "overlay-ok") {
+      const fn = state.overlay && state.overlay.onOk;
+      closeOverlay();
+      if (fn) fn();
+      return;
+    }
+    if (action === "time-apply") {
+      const minEl = document.getElementById("te-min");
+      const secEl = document.getElementById("te-sec");
+      const m = Math.max(0, Math.min(99, parseInt(minEl && minEl.value, 10) || 0));
+      const s = Math.max(0, Math.min(59, parseInt(secEl && secEl.value, 10) || 0));
+      const o = state.overlay;
+      closeOverlay();
+      if (o && o.type === "time") {
+        applyTimeToField(o.field, (m * 60 + s) * 1000, o.roundIndex);
+        render();
+      }
+      return;
+    }
+  }
+
+  function onChange(e) {
+    if (e.target && e.target.id === "import-file" && e.target.files && e.target.files[0]) {
+      importPresets(e.target.files[0]);
+      e.target.value = "";
+    }
+  }
+
+  document.addEventListener("input", function (e) {
+    if (e.target && e.target.id === "title-input" && state.draft) {
+      state.draft.title = e.target.value;
+    }
+  });
+  document.addEventListener("click", onClick);
+  document.addEventListener("change", onChange);
+  document.addEventListener("pointerdown", function () { unlockAudio(); }, { once: false, passive: true });
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") {
+      if (state.run && !state.run.paused && !state.run.done) {
+        requestWake();
+        catchUp();
+      }
+    }
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && state.overlay) {
+      closeOverlay();
+    }
+  });
+
+  // Expose a tiny test hook so Playwright can drive a short preset without waiting minutes.
+  window.__roundTimer = {
+    getState: function () { return state; },
+    formatMs: formatMs,
+    startRun: startRun,
+    saveStore: saveStore
+  };
+
+  render();
+})();
+
+  </script>
+</body>
+</html>
