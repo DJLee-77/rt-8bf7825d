@@ -85,7 +85,33 @@ input:focus { border-color: var(--line-strong); }
   flex-direction: column;
   overflow: hidden;
   position: relative;
+  background: var(--bg);
 }
+.edit-screen {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+  will-change: transform;
+}
+.edit-screen.dragging { transition: none !important; }
+.edit-screen.exiting { transition: transform 0.22s ease, opacity 0.22s ease; }
+
+/* iOS 18+ switch used only to fire a system haptic; keep it real-sized but off-screen */
+.haptic-input, .haptic-label {
+  position: fixed;
+  left: -80px;
+  bottom: 8px;
+  width: 52px;
+  height: 32px;
+  margin: 0;
+  opacity: 0.02;
+  pointer-events: none;
+  z-index: 0;
+}
+#prompt-root .overlay { z-index: 60; }
 
 /* ===== Shared chrome ===== */
 .topbar {
@@ -891,6 +917,41 @@ input:focus { border-color: var(--line-strong); }
 }
 .sound-chip.on { background: var(--green); color: #0a0a0c; }
 .sound-chip:active { transform: scale(0.97); }
+.sound-chip.upload-chip {
+  background: transparent;
+  border: 1px dashed var(--line-strong);
+  color: var(--text);
+}
+.sound-chip.upload-chip:active { background: var(--bg-hover); }
+.sound-manage {
+  flex-basis: 100%;
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+.sound-manage button {
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 10px;
+  background: var(--btn);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.sound-manage button.danger { color: #ff6b63; }
+.haptics-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 4px 0 12px;
+  min-height: 44px;
+}
+.haptics-row .haptics-label {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
 .phase-hint { margin: 6px 0 0; font-size: 13px; color: var(--faint); line-height: 1.4; }
 
 /* Run: only pause + stop */
@@ -904,6 +965,10 @@ input:focus { border-color: var(--line-strong); }
 </head>
 <body>
   <div id="app"></div>
+  <div id="prompt-root"></div>
+  <input id="sound-upload" class="sr-only" type="file" accept="audio/*">
+  <input id="haptic-switch" type="checkbox" switch class="haptic-input" tabindex="-1" aria-hidden="true">
+  <label id="haptic-label" class="haptic-label" for="haptic-switch" aria-hidden="true"></label>
   <script>
 (function () {
   "use strict";
@@ -920,7 +985,7 @@ input:focus { border-color: var(--line-strong); }
     { id: "long-buzzer", name: "Long Buzzer" },
     { id: "warning-buzz", name: "Warning Buzz" },
     { id: "tick", name: "Tick / Beep" }
-    // Future: user uploads can be appended as { id: "custom:<key>", name, kind: "file" }
+    // User uploads appear separately from this built-in list (id prefix "custom:").
   ];
 
   const DEFAULT_WARN = {
@@ -987,6 +1052,7 @@ input:focus { border-color: var(--line-strong); }
   }
 
   function shortSoundName(id) {
+    if (id && id.indexOf("custom:") === 0) return soundName(id);
     const map = {
       bell: "Bell",
       "double-bell": "Double Bell",
@@ -1100,12 +1166,16 @@ input:focus { border-color: var(--line-strong); }
   function loadStore() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return { presets: seedPresets(), seeded: true };
+      if (!raw) return { presets: seedPresets(), seeded: true, haptics: true };
       const data = JSON.parse(raw);
-      if (!Array.isArray(data.presets)) return { presets: seedPresets(), seeded: true };
-      return { presets: data.presets.map(function (p) { return makePreset(p); }), seeded: true };
+      if (!Array.isArray(data.presets)) return { presets: seedPresets(), seeded: true, haptics: data.haptics !== false };
+      return {
+        presets: data.presets.map(function (p) { return makePreset(p); }),
+        seeded: true,
+        haptics: data.haptics !== false
+      };
     } catch (e) {
-      return { presets: seedPresets(), seeded: true };
+      return { presets: seedPresets(), seeded: true, haptics: true };
     }
   }
 
@@ -1114,7 +1184,8 @@ input:focus { border-color: var(--line-strong); }
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         version: 1,
         seeded: true,
-        presets: state.presets
+        presets: state.presets,
+        haptics: state.haptics !== false
       }));
     } catch (e) {}
   }
@@ -1127,6 +1198,10 @@ input:focus { border-color: var(--line-strong); }
   }
 
   function soundName(id) {
+    if (id && id.indexOf("custom:") === 0) {
+      const c = (state.customSounds || []).find(function (s) { return s.id === id; });
+      return c ? c.name : "Custom sound";
+    }
     const s = SOUND_LIBRARY.find(function (x) { return x.id === id; });
     return s ? s.name : "None";
   }
@@ -1522,8 +1597,6 @@ input:focus { border-color: var(--line-strong); }
   function playSound(id) {
     unlockAudio();
     if (!id || id === "none") return;
-    // Reserved for uploaded files stored in IndexedDB:
-    // if (id.indexOf("custom:") === 0) { playCustomSound(id); return; }
     function fire(via) {
       logEvent({ type: "play", sound: id, via: via });
     }
@@ -1536,9 +1609,10 @@ input:focus { border-color: var(--line-strong); }
       // Prefer a single output: HTML audio when a pre-rendered WAV is ready
       // (more reliable with the iOS silent switch after the playback-category unlock);
       // otherwise Web Audio. Never play both, or sounds would double on desktop.
+      // Uploaded sounds are always HTML audio (object URL from IndexedDB).
       playHtmlSound(id).then(function (ok) {
         if (ok) fire("html");
-        else viaWeb();
+        else if (id.indexOf("custom:") !== 0) viaWeb();
       });
     };
     if (ctx && ctx.state === "suspended") {
@@ -1564,10 +1638,280 @@ input:focus { border-color: var(--line-strong); }
     toast: null,
     wakeLock: null,
     loopInterval: null,
-    loopRaf: null
+    loopRaf: null,
+    haptics: stored.haptics !== false,
+    customSounds: [],
+    uploadEvent: null,
+    prompt: null
   };
 
   const app = document.getElementById("app");
+
+  // ---------- custom sounds (IndexedDB) + haptics + prompts ----------
+  const IDB_NAME = "round-timer-idb";
+  const IDB_STORE = "customSounds";
+  const CUSTOM_SOUND_MAX = 5 * 1024 * 1024;
+
+  function openSoundDB() {
+    return new Promise(function (resolve, reject) {
+      if (!window.indexedDB) {
+        reject(new Error("no-idb"));
+        return;
+      }
+      const req = indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = function () {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) {
+          db.createObjectStore(IDB_STORE, { keyPath: "id" });
+        }
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+
+  function idbRequest(fn) {
+    return openSoundDB().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        let req;
+        try { req = fn(db); } catch (e) { reject(e); return; }
+        req.onsuccess = function () { resolve(req.result); };
+        req.onerror = function () { reject(req.error); };
+      });
+    });
+  }
+
+  function rememberCustomUrl(rec) {
+    if (!rec || !rec.id || !rec.blob) return;
+    if (audio.urls[rec.id]) {
+      try { URL.revokeObjectURL(audio.urls[rec.id]); } catch (e) {}
+    }
+    audio.urls[rec.id] = URL.createObjectURL(rec.blob);
+  }
+
+  function loadCustomSounds() {
+    return idbRequest(function (db) {
+      return db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).getAll();
+    }).then(function (rows) {
+      const list = Array.isArray(rows) ? rows : [];
+      state.customSounds = list.map(function (r) {
+        rememberCustomUrl(r);
+        return { id: r.id, name: r.name, mime: r.mime || "", size: r.size || (r.blob && r.blob.size) || 0 };
+      });
+      return state.customSounds;
+    }).catch(function () {
+      state.customSounds = state.customSounds || [];
+      return state.customSounds;
+    });
+  }
+
+  const customSoundsReady = loadCustomSounds();
+
+  function nameFromFile(file) {
+    let n = (file && file.name) || "Custom sound";
+    n = n.replace(/\.[^.]+$/, "").replace(/[_]+/g, " ").trim();
+    if (!n) n = "Custom sound";
+    if (n.length > 40) n = n.slice(0, 40);
+    return n;
+  }
+
+  function isAllowedSoundFile(file) {
+    const name = (file && file.name) || "";
+    const type = (file && file.type) || "";
+    if (/\.(mp3|wav|wave|m4a|aac|caf|ogg|flac)$/i.test(name)) return true;
+    if (/^audio\//i.test(type)) return true;
+    return false;
+  }
+
+  function saveCustomSoundRecord(rec) {
+    return idbRequest(function (db) {
+      return db.transaction(IDB_STORE, "readwrite").objectStore(IDB_STORE).put(rec);
+    });
+  }
+
+  function deleteCustomSoundRecord(id) {
+    return idbRequest(function (db) {
+      return db.transaction(IDB_STORE, "readwrite").objectStore(IDB_STORE).delete(id);
+    });
+  }
+
+  function defaultSoundForKey(key) {
+    const ev = SOUND_EVENTS.find(function (x) { return x.key === key; });
+    if (!ev) return "bell";
+    if (ev.kind === "warn") return (DEFAULT_SOUNDS[key] && DEFAULT_SOUNDS[key].sound) || "warning-buzz";
+    return DEFAULT_SOUNDS[key] || "bell";
+  }
+
+  function replaceSoundId(sounds, fromId, toId) {
+    if (!sounds) return;
+    SOUND_EVENTS.forEach(function (ev) {
+      if (ev.kind === "warn") {
+        if (sounds[ev.key] && sounds[ev.key].sound === fromId) sounds[ev.key].sound = toId;
+      } else if (sounds[ev.key] === fromId) {
+        sounds[ev.key] = toId;
+      }
+    });
+  }
+
+  function currentSoundForEvent(eventKey) {
+    if (!state.draft || !state.draft.sounds) return "";
+    const ev = SOUND_EVENTS.find(function (x) { return x.key === eventKey; });
+    if (ev && ev.kind === "warn") return state.draft.sounds[eventKey] && state.draft.sounds[eventKey].sound;
+    return state.draft.sounds[eventKey];
+  }
+
+  function refreshSoundPicks() {
+    document.querySelectorAll(".sound-picks[data-event]").forEach(function (el) {
+      const key = el.getAttribute("data-event");
+      el.outerHTML = soundPickHTML(currentSoundForEvent(key), key);
+    });
+  }
+
+  function handleSoundUpload(file) {
+    if (!file) return;
+    if (file.size > CUSTOM_SOUND_MAX) {
+      toast("That sound is over 5 MB. Please pick a smaller file (MP3, WAV, M4A, or AAC).");
+      return;
+    }
+    if (!isAllowedSoundFile(file)) {
+      toast("Please choose an audio file such as MP3, WAV, M4A, or AAC.");
+      return;
+    }
+    const id = "custom:" + uid();
+    const rec = {
+      id: id,
+      name: nameFromFile(file),
+      mime: file.type || "audio/*",
+      size: file.size,
+      blob: file,
+      createdAt: Date.now()
+    };
+    saveCustomSoundRecord(rec).then(function () {
+      rememberCustomUrl(rec);
+      state.customSounds.push({ id: rec.id, name: rec.name, mime: rec.mime, size: rec.size });
+      const eventKey = state.uploadEvent;
+      state.uploadEvent = null;
+      if (eventKey && state.overlay && state.overlay.type === "phase" && state.draft) {
+        const ev = SOUND_EVENTS.find(function (x) { return x.key === eventKey; });
+        if (ev && ev.kind === "warn") state.draft.sounds[eventKey].sound = id;
+        else state.draft.sounds[eventKey] = id;
+        refreshSoundPicks();
+      } else {
+        refreshSoundPicks();
+      }
+      playSound(id);
+      toast("Sound added");
+    }).catch(function () {
+      toast("Couldn’t save that sound on this device.");
+    });
+  }
+
+  function renameCustomSound(id, name) {
+    name = (name || "").trim();
+    if (!name) return Promise.resolve();
+    if (name.length > 40) name = name.slice(0, 40);
+    return openSoundDB().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        const tx = db.transaction(IDB_STORE, "readwrite");
+        const store = tx.objectStore(IDB_STORE);
+        const get = store.get(id);
+        get.onsuccess = function () {
+          const rec = get.result;
+          if (!rec) { resolve(); return; }
+          rec.name = name;
+          store.put(rec);
+        };
+        get.onerror = function () { reject(get.error); };
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    }).then(function () {
+      const row = state.customSounds.find(function (s) { return s.id === id; });
+      if (row) row.name = name;
+      refreshSoundPicks();
+      if (state.view === "edit" && !state.overlay) render();
+    });
+  }
+
+  function scrubSoundId(sounds, fromId) {
+    if (!sounds) return;
+    SOUND_EVENTS.forEach(function (ev) {
+      const next = defaultSoundForKey(ev.key);
+      if (ev.kind === "warn") {
+        if (sounds[ev.key] && sounds[ev.key].sound === fromId) sounds[ev.key].sound = next;
+      } else if (sounds[ev.key] === fromId) {
+        sounds[ev.key] = next;
+      }
+    });
+  }
+
+  function removeCustomSound(id) {
+    state.presets.forEach(function (p) { scrubSoundId(p.sounds, id); });
+    if (state.draft) scrubSoundId(state.draft.sounds, id);
+    if (state.run) scrubSoundId(state.run.sounds, id);
+    if (audio.urls[id]) {
+      try { URL.revokeObjectURL(audio.urls[id]); } catch (e) {}
+      delete audio.urls[id];
+    }
+    state.customSounds = state.customSounds.filter(function (s) { return s.id !== id; });
+    saveStore();
+    return deleteCustomSoundRecord(id).then(function () {
+      refreshSoundPicks();
+    }).catch(function () {
+      refreshSoundPicks();
+    });
+  }
+
+  function closePrompt() {
+    state.prompt = null;
+    const root = document.getElementById("prompt-root");
+    if (root) root.innerHTML = "";
+  }
+
+  function showPrompt(opts) {
+    state.prompt = opts || {};
+    const root = document.getElementById("prompt-root");
+    if (!root) return;
+    const input = opts.input
+      ? '<input id="prompt-input" type="text" maxlength="40" value="' + escapeHtml(opts.value || "") + '">'
+      : "";
+    const body = opts.body ? "<p>" + escapeHtml(opts.body) + "</p>" : "";
+    root.innerHTML =
+      '<div class="overlay center" data-action="prompt-backdrop">' +
+        '<div class="dialog" role="dialog" aria-modal="true">' +
+          "<h3>" + escapeHtml(opts.title || "") + "</h3>" +
+          body + input +
+          '<div class="row">' +
+            '<button type="button" class="ghost-btn" data-action="prompt-cancel">Cancel</button>' +
+            '<button type="button" class="' + (opts.danger ? "danger-btn" : "solid-btn") + '" data-action="prompt-ok">' +
+              escapeHtml(opts.okLabel || "OK") +
+            "</button>" +
+          "</div>" +
+        "</div>" +
+      "</div>";
+    const el = document.getElementById("prompt-input");
+    if (el) setTimeout(function () { el.focus(); el.select(); }, 50);
+  }
+
+  function finishPrompt(ok) {
+    const opts = state.prompt;
+    const value = (document.getElementById("prompt-input") && document.getElementById("prompt-input").value) || "";
+    closePrompt();
+    if (ok && opts && opts.onOk) opts.onOk(value);
+  }
+
+  function tapHaptic() {
+    if (state.haptics === false) return;
+    try {
+      if (navigator.vibrate) navigator.vibrate(10);
+    } catch (e) {}
+    try {
+      const label = document.getElementById("haptic-label");
+      const input = document.getElementById("haptic-switch");
+      if (label) label.click();
+      else if (input) input.click();
+    } catch (e) {}
+  }
 
   // ---------- wake lock ----------
   async function requestWake() {
@@ -1849,13 +2193,24 @@ input:focus { border-color: var(--line-strong); }
   }
 
   function soundPickHTML(currentId, eventKey) {
-    return '<div class="sound-picks" data-event="' + eventKey + '">' +
-      SOUND_LIBRARY.map(function (s) {
-        return '<button type="button" class="sound-chip' + (s.id === currentId ? " on" : "") +
-          '" data-action="phase-pick-sound" data-event="' + eventKey + '" data-id="' + s.id + '">' +
-          escapeHtml(s.name) + "</button>";
-      }).join("") +
-    "</div>";
+    const built = SOUND_LIBRARY.map(function (s) {
+      return '<button type="button" class="sound-chip' + (s.id === currentId ? " on" : "") +
+        '" data-action="phase-pick-sound" data-event="' + eventKey + '" data-id="' + s.id + '">' +
+        escapeHtml(s.name) + "</button>";
+    }).join("");
+    const custom = (state.customSounds || []).map(function (s) {
+      return '<button type="button" class="sound-chip' + (s.id === currentId ? " on" : "") +
+        '" data-action="phase-pick-sound" data-event="' + eventKey + '" data-id="' + s.id + '">' +
+        escapeHtml(s.name) + "</button>";
+    }).join("");
+    const upload = '<button type="button" class="sound-chip upload-chip" data-action="upload-sound" data-event="' + eventKey + '">Upload sound</button>';
+    const manage = (currentId && currentId.indexOf("custom:") === 0)
+      ? '<div class="sound-manage">' +
+          '<button type="button" data-action="rename-sound" data-id="' + currentId + '">Rename</button>' +
+          '<button type="button" class="danger" data-action="delete-sound" data-id="' + currentId + '">Delete</button>' +
+        "</div>"
+      : "";
+    return '<div class="sound-picks" data-event="' + eventKey + '">' + built + custom + upload + manage + "</div>";
   }
 
   function warnBlockHTML(cfg, warnKey) {
@@ -2257,6 +2612,10 @@ input:focus { border-color: var(--line-strong); }
         '<div class="more-wrap">' +
           '<button type="button" class="more-toggle' + moreOpen + '" data-action="toggle-list-more">More options ' + ic.chev + "</button>" +
           '<div class="more-body' + moreOpen + '">' +
+            '<div class="haptics-row">' +
+              '<div class="haptics-label">Haptics</div>' +
+              '<button type="button" class="switch' + (state.haptics !== false ? " on" : "") + '" data-action="toggle-haptics" role="switch" aria-checked="' + (state.haptics !== false ? "true" : "false") + '" aria-label="Toggle haptics"><i></i></button>' +
+            "</div>" +
             '<div class="footer-actions">' +
               '<button type="button" class="ghost-btn" data-action="export">Export</button>' +
               '<button type="button" class="ghost-btn" data-action="import">Import</button>' +
@@ -2319,6 +2678,7 @@ input:focus { border-color: var(--line-strong); }
     }
 
     return (
+      '<div class="edit-screen">' +
       '<div class="topbar">' +
         '<button type="button" class="icon-btn" data-action="cancel-edit" aria-label="Back">' + ic.back + "</button>" +
         "<h1>" + (state.draftIsNew ? "New Timer" : "Edit Timer") + "</h1>" +
@@ -2355,6 +2715,7 @@ input:focus { border-color: var(--line-strong); }
           "</div>" +
         "</div>" +
         '<input id="import-file" class="sr-only" type="file" accept="application/json,.json">' +
+      "</div>" +
       "</div>"
     );
   }
@@ -2716,6 +3077,7 @@ input:focus { border-color: var(--line-strong); }
     const t = e.target.closest("[data-action]");
     if (!t) return;
     const action = t.getAttribute("data-action");
+    if (action !== "overlay-backdrop" && action !== "prompt-backdrop") tapHaptic();
 
     if (action === "new") {
       unlockAudio();
@@ -2738,6 +3100,13 @@ input:focus { border-color: var(--line-strong); }
     if (action === "toggle-list-more") {
       state.moreList = !state.moreList;
       render();
+      return;
+    }
+    if (action === "toggle-haptics") {
+      state.haptics = state.haptics === false;
+      saveStore();
+      t.classList.toggle("on", state.haptics !== false);
+      t.setAttribute("aria-checked", state.haptics !== false ? "true" : "false");
       return;
     }
     if (action === "toggle-edit-more") {
@@ -2825,14 +3194,51 @@ input:focus { border-color: var(--line-strong); }
       if (ev && ev.kind === "warn") state.draft.sounds[key].sound = id;
       else state.draft.sounds[key] = id;
       playSound(id);
-      const group = t.closest(".sound-picks");
-      if (group) {
-        group.querySelectorAll(".sound-chip").forEach(function (chip) {
-          chip.classList.toggle("on", chip.getAttribute("data-id") === id);
-        });
+      refreshSoundPicks();
+      return;
+    }
+    if (action === "upload-sound") {
+      state.uploadEvent = t.getAttribute("data-event");
+      const input = document.getElementById("sound-upload");
+      if (input) {
+        input.value = "";
+        input.click();
       }
       return;
     }
+    if (action === "rename-sound") {
+      const id = t.getAttribute("data-id");
+      const rec = (state.customSounds || []).find(function (s) { return s.id === id; });
+      if (!rec) return;
+      showPrompt({
+        title: "Rename sound",
+        input: true,
+        value: rec.name,
+        okLabel: "Save",
+        onOk: function (value) { renameCustomSound(id, value); }
+      });
+      return;
+    }
+    if (action === "delete-sound") {
+      const id = t.getAttribute("data-id");
+      const rec = (state.customSounds || []).find(function (s) { return s.id === id; });
+      if (!rec) return;
+      showPrompt({
+        title: "Delete this sound?",
+        body: "Timers that use it will go back to the built-in default.",
+        danger: true,
+        okLabel: "Delete",
+        onOk: function () { removeCustomSound(id); }
+      });
+      return;
+    }
+    if (action === "prompt-backdrop") {
+      if (e.target !== t) return;
+      closePrompt();
+      return;
+    }
+    if (action === "prompt-cancel") { closePrompt(); return; }
+    if (action === "prompt-ok") { finishPrompt(true); return; }
     if (action === "phase-toggle-warn") {
       if (!state.overlay || state.overlay.type !== "phase" || !state.draft) return;
       const key = t.getAttribute("data-warn");
@@ -3067,6 +3473,10 @@ input:focus { border-color: var(--line-strong); }
       importPresets(e.target.files[0]);
       e.target.value = "";
     }
+    if (e.target && e.target.id === "sound-upload" && e.target.files && e.target.files[0]) {
+      handleSoundUpload(e.target.files[0]);
+      e.target.value = "";
+    }
   }
 
   document.addEventListener("input", function (e) {
@@ -3113,10 +3523,111 @@ input:focus { border-color: var(--line-strong); }
   });
 
   document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && state.prompt) {
+      closePrompt();
+      return;
+    }
     if (e.key === "Escape" && state.overlay) {
       closeOverlay();
     }
   });
+
+  function bindEditSwipe() {
+    let drag = null;
+
+    function onDown(e) {
+      if (state.view !== "edit") return;
+      if (state.overlay || state.prompt) return;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      if (e.target && e.target.closest && e.target.closest("input, textarea, select, [switch]")) return;
+      const screen = app.querySelector(".edit-screen");
+      if (!screen) return;
+      const edge = 32 + (parseInt(getComputedStyle(document.documentElement).getPropertyValue("--safe-left")) || 0);
+      drag = {
+        id: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        lastX: e.clientX,
+        lastT: Date.now(),
+        vx: 0,
+        x: 0,
+        dragging: false,
+        fromEdge: e.clientX <= edge,
+        screen: screen
+      };
+    }
+
+    function onMove(e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      if (state.view !== "edit" || state.overlay || state.prompt) { drag = null; return; }
+      const dx = e.clientX - drag.startX;
+      const dy = e.clientY - drag.startY;
+      const now = Date.now();
+      const dt = Math.max(1, now - drag.lastT);
+      drag.vx = (e.clientX - drag.lastX) / dt;
+      drag.lastX = e.clientX;
+      drag.lastT = now;
+
+      if (!drag.dragging) {
+        if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
+          drag = null;
+          return;
+        }
+        const ready = drag.fromEdge ? dx > 8 : (dx > 18 && dx > Math.abs(dy) * 1.25);
+        if (!ready) return;
+        drag.dragging = true;
+        drag.screen.classList.add("dragging");
+        drag.screen.style.transition = "none";
+        try { drag.screen.setPointerCapture(e.pointerId); } catch (err) {}
+      }
+
+      if (e.cancelable) e.preventDefault();
+      const x = Math.max(0, dx);
+      drag.x = x;
+      drag.screen.style.transform = "translateX(" + x + "px)";
+      drag.screen.style.opacity = String(Math.max(0.45, 1 - x / (window.innerWidth || 390) * 0.35));
+    }
+
+    function finish(e) {
+      if (!drag || (e && e.pointerId !== drag.id)) return;
+      const d = drag;
+      drag = null;
+      const screen = d.screen;
+      screen.classList.remove("dragging");
+      if (!d.dragging) return;
+      if (d.x > 6) {
+        const swallow = function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          screen.removeEventListener("click", swallow, true);
+        };
+        screen.addEventListener("click", swallow, true);
+        setTimeout(function () { screen.removeEventListener("click", swallow, true); }, 400);
+      }
+      const wide = window.innerWidth || 390;
+      const close = d.x > 110 || d.x > wide * 0.28 || (d.vx > 0.65 && d.x > 28);
+      if (close) {
+        screen.classList.add("exiting");
+        screen.style.transition = "transform 0.2s ease, opacity 0.2s ease";
+        screen.style.transform = "translateX(100%)";
+        screen.style.opacity = "0.4";
+        setTimeout(function () {
+          if (state.view === "edit") exitEditor({ persist: true, toast: false });
+        }, 200);
+      } else {
+        screen.style.transition = "transform 0.25s ease, opacity 0.25s ease";
+        screen.style.transform = "translateX(0)";
+        screen.style.opacity = "1";
+      }
+    }
+
+    app.addEventListener("pointerdown", onDown);
+    app.addEventListener("pointermove", onMove, { passive: false });
+    app.addEventListener("pointerup", finish);
+    app.addEventListener("pointercancel", finish);
+  }
+
+  bindEditSwipe();
 
   // Expose a tiny test hook so Playwright can drive a short preset without waiting minutes.
   window.__roundTimer = {
@@ -3140,10 +3651,14 @@ input:focus { border-color: var(--line-strong); }
       if (run.paused) run.pauseRemaining = rem;
       else run.phaseStart = Date.now() - (step.duration - rem);
     },
-    tick: function () { if (typeof catchUp === "function") catchUp(); }
+    tick: function () { if (typeof catchUp === "function") catchUp(); },
+    haptic: tapHaptic,
+    listCustomSounds: function () { return (state.customSounds || []).slice(); },
+    customSoundsReady: function () { return customSoundsReady; }
   };
 
   render();
+  customSoundsReady.then(function () { render(); }).catch(function () {});
 })();
 
   </script>
